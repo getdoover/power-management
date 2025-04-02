@@ -1,0 +1,58 @@
+{
+    "sleep_time_thresholds": {
+        "element": {
+            "elements": {
+                "voltage_threshold": {
+                    "min": 0,
+                    "max": 36,
+                    "name": "voltage_threshold",
+                    "displayName": "Voltage Threshold",
+                    "type": "float",
+                    "default": 11.5
+                },
+                "sleep_time_(minutes)": {
+                    "min": 0,
+                    "max": 3600,
+                    "name": "sleep_time_(minutes)",
+                    "displayName": "Sleep Time (minutes)",
+                    "type": "int",
+                    "default": 30
+                }
+            },
+            "name": "sleep_time_thresholds",
+            "displayName": "Sleep Time Thresholds",
+            "type": "group"
+        },
+        "name": "sleep_time_thresholds",
+        "displayName": "Sleep Time Thresholds",
+        "type": "many"
+    },
+    "min_awake_time_thresholds": {
+        "element": {
+            "elements": {
+                "voltage_threshold": {
+                    "min": 0,
+                    "max": 36,
+                    "name": "voltage_threshold",
+                    "displayName": "Voltage Threshold",
+                    "type": "float",
+                    "default": 11.5
+                },
+                "awake_time_(seconds)": {
+                    "min": 0,
+                    "max": 3600,
+                    "name": "awake_time_(seconds)",
+                    "displayName": "Awake Time (seconds)",
+                    "type": "int",
+                    "default": 30
+                }
+            },
+            "name": "awake_time_thresholds",
+            "displayName": "Awake Time Thresholds",
+            "type": "group"
+        },
+        "name": "min_awake_time_thresholds",
+        "displayName": "Min Awake Time Thresholds",
+        "type": "many"
+    }
+}

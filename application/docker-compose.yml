@@ -1,0 +1,4 @@
+services:
+  example_applicaation:
+    image: ghcr.io/getdoover/app-template:main
+    restart: unless-stopped

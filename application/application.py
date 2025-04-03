@@ -1,13 +1,13 @@
 import asyncio
 import time
 
-from pydoover.docker import DockerApplication, run_app
+from pydoover.docker import Application, run_app
 from pydoover.utils import apply_async_kalman_filter, call_maybe_async
 
 from app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
 
 
-class PowerManager(DockerApplication):
+class PowerManager(Application):
     config: PowerManagerConfig
 
     def __init__(self, *args, **kwargs):

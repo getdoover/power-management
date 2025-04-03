@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 from pydoover.docker import Application, run_app
@@ -6,6 +7,8 @@ from pydoover.utils import apply_async_kalman_filter, call_maybe_async
 
 from app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
 
+
+log = logging.getLogger()
 
 class PowerManager(Application):
     config: PowerManagerConfig
@@ -44,13 +47,13 @@ class PowerManager(Application):
             try:
                 self.last_voltage = await self.get_system_voltage()
             except Exception as e:
-                self.log("error", f"Error fetching system voltage: {e}")
+                log.error(f"Error fetching system voltage: {e}")
 
             if self.last_voltage is not None:
                 self.last_voltage = round(self.last_voltage, 2)
                 self.last_voltage_time = time.time()
 
-            self.log(f"Filtered system voltage: {self.last_voltage}")
+            log.info(f"Filtered system voltage: {self.last_voltage}")
 
     @apply_async_kalman_filter(
         process_variance=0.05,
@@ -87,24 +90,24 @@ class PowerManager(Application):
     async def maybe_schedule_sleep(self, sleep_time: int, time_till_sleep: int = 20):
         if self.scheduled_goto_sleep_time is not None:
             if self.get_time_till_sleep() is not None:
-                self.log("warning", f"Time till sleep: {self.get_time_till_sleep()}")
+                log.warning(f"Time till sleep: {self.get_time_till_sleep()}")
             return
 
         if self.get_awake_time() < (self.get_min_awake_time() - time_till_sleep):
             time_till_sleep = self.get_min_awake_time() - self.get_awake_time()
-            self.log("Minimum awake time not met: {} seconds to go".format(time_till_sleep))
+            log.info("Minimum awake time not met: {} seconds to go".format(time_till_sleep))
             return
 
         if not self.shutdown_permitted():
-            self.log("Scheduling of shutdown not yet permitted by application. Waiting...")
+            log.info("Scheduling of shutdown not yet permitted by application. Waiting...")
             return
 
         immunity_time = await self.get_immunity_time()
         if immunity_time is not None:
-            self.log(f"Device immune to shutdown for {immunity_time} seconds.")
+            log.info(f"Device immune to shutdown for {immunity_time} seconds.")
             return
 
-        self.log(f"Scheduling sleep of {sleep_time} secs in {time_till_sleep} secs.")
+        log.info(f"Scheduling sleep of {sleep_time} secs in {time_till_sleep} secs.")
         self.scheduled_goto_sleep_time = time.time() + time_till_sleep
         self.scheduled_sleep_time = sleep_time
         await self.run_pre_shutdown_hooks(time_till_sleep, sleep_time)
@@ -166,7 +169,7 @@ class PowerManager(Application):
         """
         Put the system to sleep.
         """
-        self.log("warning", "Putting system to sleep...")
+        log.warning("Putting system to sleep...")
 
         ## Run shutdown hooks
         for hook in self.shutdown_hooks:
@@ -182,7 +185,7 @@ class PowerManager(Application):
         try:
             await self.close_app(with_delay=120)
         except Exception as e:
-            self.log("error", f"Error closing device application for shutdown: {e}")
+            log.error(f"Error closing device application for shutdown: {e}")
 
         # Wait for the system to shutdown
         await asyncio.sleep(120)
@@ -199,10 +202,10 @@ class PowerManager(Application):
             else:
                 hook(**kwargs)
         except Exception as e:
-            self.log("error", f"Error running hook {hook}: {e}")
+            log.error(f"Error running hook {hook}: {e}")
 
     async def setup(self):
-        self.log("Setting up PowerManager...")
+        log.info("Setting up PowerManager...")
         if not self.is_active():
             return
 

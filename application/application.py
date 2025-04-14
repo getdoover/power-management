@@ -1,14 +1,15 @@
 import asyncio
 import logging
 import time
+from datetime import timedelta, datetime
 
 from pydoover.docker import Application, run_app
-from pydoover.utils import apply_async_kalman_filter, call_maybe_async
+from pydoover.utils import apply_async_kalman_filter
 
 from app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
 
-
 log = logging.getLogger()
+
 
 class PowerManager(Application):
     config: PowerManagerConfig
@@ -23,20 +24,6 @@ class PowerManager(Application):
         self.last_voltage = None
         self.last_voltage_time = None
         self.voltage_update_interval = 5
-
-        self.request_shutdown_hooks = []  # Request shutdown hooks will be run and if all return True, the system will shutdown
-
-        self.pre_shutdown_hooks = []  # Pre shutdown hooks will be run when the system schedules a shutdown
-        self.shutdown_hooks = []  # Shutdown hooks will be run when the system is about to shutdown
-
-    def register_request_shutdown_hook(self, hook):
-        self.request_shutdown_hooks.append(hook)
-
-    def register_pre_shutdown_hook(self, hook):
-        self.pre_shutdown_hooks.append(hook)
-
-    def register_shutdown_hook(self, hook):
-        self.shutdown_hooks.append(hook)
 
     def is_active(self):
         return bool(self.config)
@@ -98,9 +85,9 @@ class PowerManager(Application):
             log.info("Minimum awake time not met: {} seconds to go".format(time_till_sleep))
             return
 
-        if not self.shutdown_permitted():
-            log.info("Scheduling of shutdown not yet permitted by application. Waiting...")
-            return
+        # if not self.shutdown_permitted():
+        #     log.info("Scheduling of shutdown not yet permitted by application. Waiting...")
+        #     return
 
         immunity_time = await self.get_immunity_time()
         if immunity_time is not None:
@@ -110,7 +97,6 @@ class PowerManager(Application):
         log.info(f"Scheduling sleep of {sleep_time} secs in {time_till_sleep} secs.")
         self.scheduled_goto_sleep_time = time.time() + time_till_sleep
         self.scheduled_sleep_time = sleep_time
-        await self.run_pre_shutdown_hooks(time_till_sleep, sleep_time)
 
     def get_time_till_sleep(self):
         if self.scheduled_goto_sleep_time is None:
@@ -122,9 +108,13 @@ class PowerManager(Application):
             return False
         return time.time() >= self.scheduled_goto_sleep_time
 
+    @property
     def shutdown_permitted(self):
-        for hook in self.request_shutdown_hooks:
-            if not hook():
+        # search through app state for any apps that have shutdown_permitted = False
+        # if they don't define it (shouldn't happen), assume True.
+        for k, v in self._app_state.items():
+            if isinstance(v, dict) and v.get("shutdown_permitted", True) is False:
+                log.info(f"Shutdown not permitted by {k}.")
                 return False
         return True
 
@@ -154,10 +144,11 @@ class PowerManager(Application):
 
         # If the system is already scheduled to sleep, check if it's time to sleep
         if self.is_ready_to_sleep():
-            await self.go_to_sleep()
+            await self.request_shutdown_async()
+            # await self.go_to_sleep()
             return
 
-            # Determine the sleep time from the config & current voltage
+        # Determine the sleep time from the config & current voltage
         sleep_time = self.get_sleep_time()
         if sleep_time is None:
             return
@@ -171,15 +162,31 @@ class PowerManager(Application):
         """
         log.warning("Putting system to sleep...")
 
+        log.info("Setting shutdown_requested hooks")
+        # this should run all on_shutdown_requested hooks in each app.
+        await self.set_state_async("shutdown_requested", True, is_global=True)
+
+        await asyncio.sleep(5)
+
+        # for a maximum of 300 seconds (5min), check if shutdown is permitted
+        for _ in range(60):
+            if self.shutdown_permitted:
+                break
+            else:
+                log.info("Shutdown not permitted. Waiting...")
+                await asyncio.sleep(5)
+
+        # either shutdown is permitted, or we've timed out. Either way, proceed to shutdown...
+
         ## Run shutdown hooks
-        for hook in self.shutdown_hooks:
-            await self.run_hook(hook)
+        shutdown_at = datetime.now() + timedelta(seconds=30)
+        await self.set_state_async("shutdown_at", shutdown_at.timestamp(), is_global=True)
 
         ## schedule the next startup
         await self.schedule_next_startup()
 
         ## Put the system to sleep
-        await self.platform_iface.shutdown_async()
+        await self.platform_iface.schedule_shutdown_async(30)
 
         ## Cleanly disconnect the device comms and then wait for sleep
         try:
@@ -189,20 +196,6 @@ class PowerManager(Application):
 
         # Wait for the system to shutdown
         await asyncio.sleep(120)
-
-    async def run_pre_shutdown_hooks(self, time_till_sleep, sleep_time):
-        for hook in self.pre_shutdown_hooks:
-            await call_maybe_async(hook, time_till_sleep=time_till_sleep, sleep_time=sleep_time)
-
-    async def run_hook(self, hook, **kwargs):
-        try:
-            ## If the hook is a coroutine, await it
-            if asyncio.iscoroutinefunction(hook):
-                await hook(**kwargs)
-            else:
-                hook(**kwargs)
-        except Exception as e:
-            log.error(f"Error running hook {hook}: {e}")
 
     async def setup(self):
         log.info("Setting up PowerManager...")
@@ -219,6 +212,12 @@ class PowerManager(Application):
 
     async def main_loop(self):
         await self.assess_power()
+
+        shutdown_requested = any(
+            isinstance(v, dict) and v.get("shutdown_requested", False) is True for k, v in self._app_state.items())
+        if shutdown_requested:
+            log.info("Shutdown requested. Initiating shutdown procedure...")
+            await self.go_to_sleep()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
 services:
   power-management:
-    build: .
+    image: ghcr.io/getdoover/power-management:main
     restart: unless-stopped

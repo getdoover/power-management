@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "fd1de2d88564bbd4ba71c5bd2cecebc5827306d904567d17a5b5799375f4e387"
+            "sha256": "c20762f987f10e9870bb66723fa45c56bfb02e9d7a07568b8047b12b19653b1d"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -133,7 +133,7 @@
         "pydoover": {
             "git": "git+https://spaneng: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@github.com/spaneng/pydoover.git",
             "markers": "python_version >= '3.11'",
-            "ref": "1d0274108e89c675e6cf38f95b593404d956aff9"
+            "ref": "bd37d4de8aa394e8465a38e5984b3864fd9e68ce"
         },
         "requests": {
             "hashes": [
@@ -145,11 +145,11 @@
         },
         "urllib3": {
             "hashes": [
-                "sha256:1cee9ad369867bfdbbb48b7dd50374c0967a0bb7710050facf0dd6911440e3df",
-                "sha256:f8c5449b3cf0861679ce7e0503c7b44b5ec981bec0d1d3795a07f1ba96f0204d"
+                "sha256:414bc6535b787febd7567804cc015fee39daab8ad86268f1310a9250697de466",
+                "sha256:4e16665048960a0900c702d4a66415956a584919c03361cac9f1df5c5dd7e813"
             ],
             "markers": "python_version >= '3.9'",
-            "version": "==2.3.0"
+            "version": "==2.4.0"
         }
     },
     "develop": {
@@ -351,11 +351,11 @@
         },
         "urllib3": {
             "hashes": [
-                "sha256:1cee9ad369867bfdbbb48b7dd50374c0967a0bb7710050facf0dd6911440e3df",
-                "sha256:f8c5449b3cf0861679ce7e0503c7b44b5ec981bec0d1d3795a07f1ba96f0204d"
+                "sha256:414bc6535b787febd7567804cc015fee39daab8ad86268f1310a9250697de466",
+                "sha256:4e16665048960a0900c702d4a66415956a584919c03361cac9f1df5c5dd7e813"
             ],
             "markers": "python_version >= '3.9'",
-            "version": "==2.3.0"
+            "version": "==2.4.0"
         }
     }
 }

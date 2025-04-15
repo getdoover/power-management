@@ -7,12 +7,14 @@ from pydoover.docker import Application, run_app
 from pydoover.utils import apply_async_kalman_filter
 
 from app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
+from app_ui import PowerManagerUI
 
 log = logging.getLogger()
 
 
 class PowerManager(Application):
     config: PowerManagerConfig
+    ui: PowerManagerUI()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -24,6 +26,8 @@ class PowerManager(Application):
         self.last_voltage = None
         self.last_voltage_time = None
         self.voltage_update_interval = 5
+
+        self.ui = PowerManagerUI()
 
     def is_active(self):
         return bool(self.config)
@@ -97,6 +101,8 @@ class PowerManager(Application):
         log.info(f"Scheduling sleep of {sleep_time} secs in {time_till_sleep} secs.")
         self.scheduled_goto_sleep_time = time.time() + time_till_sleep
         self.scheduled_sleep_time = sleep_time
+
+        self.ui.update(sleep_time, time_till_sleep + sleep_time)
 
     def get_time_till_sleep(self):
         if self.scheduled_goto_sleep_time is None:
@@ -201,6 +207,8 @@ class PowerManager(Application):
         log.info("Setting up PowerManager...")
         if not self.is_active():
             return
+
+        self.ui_manager.add_children(*self.ui.fetch())
 
         ## Attempt 3 times to get a non-None voltage
         for i in range(3):

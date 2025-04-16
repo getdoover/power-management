@@ -2,3 +2,4 @@ services:
   power-management:
     build: .
     restart: unless-stopped
+    network_mode: host

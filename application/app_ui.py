@@ -4,7 +4,6 @@ from pydoover import ui
 class PowerManagerUI:
     def __init__(self):
         self.connection_info = ui.ConnectionInfo("meter_connection_info", ui.ConnectionType.periodic)
-        # details = ui.Submodule("telemetry_details_submodule", "Details")
 
         self.system_voltage = ui.NumericVariable("systemVoltage", "Telemetry battery (V)", precision=1, ranges=[
             ui.Range("Low", 11.5, 12.3, ui.Colour.yellow),
@@ -15,9 +14,11 @@ class PowerManagerUI:
         self.system_temperature = ui.NumericVariable("systemTemp", "Temperature (C)", precision=1)
         self.is_online = ui.BooleanVariable("isOnline", "Online now")
 
+        self.details = ui.Submodule("telemetry_details_submodule", "Details", children=[self.system_voltage, self.system_temperature, self.is_online])
+
 
     def fetch(self):
-        return self.connection_info, self.system_voltage, self.system_temperature, self.is_online
+        return self.connection_info, self.details
 
     def update(self, voltage: float, temperature: float, is_online: bool):
         self.system_voltage.update(voltage)

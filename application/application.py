@@ -27,6 +27,8 @@ class PowerManager(Application):
         self.last_voltage_time = None
         self.voltage_update_interval = 5
 
+        self.about_to_shutdown = False
+
         self.ui = PowerManagerUI()
 
     def is_active(self):
@@ -102,7 +104,7 @@ class PowerManager(Application):
         self.scheduled_goto_sleep_time = time.time() + time_till_sleep
         self.scheduled_sleep_time = sleep_time
 
-        self.ui.update(sleep_time, time_till_sleep + sleep_time)
+        self.ui.update_connection_info(sleep_time, time_till_sleep + sleep_time)
 
     def get_time_till_sleep(self):
         if self.scheduled_goto_sleep_time is None:
@@ -223,9 +225,19 @@ class PowerManager(Application):
 
         shutdown_requested = any(
             isinstance(v, dict) and v.get("shutdown_requested", False) is True for k, v in self._app_state.items())
+
+        voltage = await self.platform_iface.get_system_voltage_async()
+        temp = await self.platform_iface.get_system_temperature_async()
+        self.ui.update(voltage, temp, not self.about_to_shutdown)
+
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")
             await self.go_to_sleep()
+
+    async def on_shutdown_at(self, dt: datetime) -> None:
+        self.about_to_shutdown = True
+        self.ui.is_online.update(False)
+        await self.ui_manager.handle_comms_async(True)
 
 
 if __name__ == "__main__":

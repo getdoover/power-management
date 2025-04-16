@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pydoover = {ref = "bd37d4de", git = "git+https://spaneng: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@github.com/spaneng/pydoover.git"}
+pydoover = {ref = "ae97506a", git = "git+https://spaneng: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@github.com/spaneng/pydoover.git"}
 
 [dev-packages]
 grpcio = "*"

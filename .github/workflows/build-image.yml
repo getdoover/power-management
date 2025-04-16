@@ -1,12 +1,10 @@
-name: Deploy Aquamonix Manager
+name: Deploy Docker Image
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - applications-dev
-    paths:
-      - 'aquamonix/**'
+      - main
 
 env:
   REGISTRY: ghcr.io
@@ -51,7 +49,7 @@ jobs:
         id: push
         uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
         with:
-          context: aquamonix/
+          context: application/
           platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

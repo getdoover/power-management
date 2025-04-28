@@ -57,6 +57,9 @@ class PowerManager(Application):
         return await self.platform_iface.get_system_voltage_async()
 
     def get_sleep_time(self) -> int | None:
+        if self.last_voltage is None:
+            return None
+
         for entry in sorted(self.config.sleep_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
             entry: SleepTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:

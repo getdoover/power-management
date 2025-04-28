@@ -120,7 +120,7 @@ class PowerManager(Application):
     def shutdown_permitted(self):
         # search through app state for any apps that have shutdown_permitted = False
         # if they don't define it (shouldn't happen), assume True.
-        for k, v in self._app_state.items():
+        for k, v in self._tag_values.items():
             if isinstance(v, dict) and v.get("shutdown_permitted", True) is False:
                 log.info(f"Shutdown not permitted by {k}.")
                 return False
@@ -172,7 +172,7 @@ class PowerManager(Application):
 
         log.info("Setting shutdown_requested hooks")
         # this should run all on_shutdown_requested hooks in each app.
-        await self.set_state_async("shutdown_requested", True, is_global=True)
+        await self.set_tag_async("shutdown_requested", True, is_global=True)
 
         await asyncio.sleep(5)
 
@@ -188,7 +188,7 @@ class PowerManager(Application):
 
         ## Run shutdown hooks
         shutdown_at = datetime.now() + timedelta(seconds=30)
-        await self.set_state_async("shutdown_at", shutdown_at.timestamp(), is_global=True)
+        await self.set_tag_async("shutdown_at", shutdown_at.timestamp(), is_global=True)
 
         ## schedule the next startup
         await self.schedule_next_startup()
@@ -219,7 +219,7 @@ class PowerManager(Application):
         await self.assess_power()
 
         shutdown_requested = any(
-            isinstance(v, dict) and v.get("shutdown_requested", False) is True for k, v in self._app_state.items())
+            isinstance(v, dict) and v.get("shutdown_requested", False) is True for k, v in self._tag_values.items())
 
         voltage = await self.platform_iface.get_system_voltage_async()
         temp = await self.platform_iface.get_system_temperature_async()

@@ -60,7 +60,7 @@ class PowerManager(Application):
         for entry in sorted(self.config.sleep_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
             entry: SleepTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:
-                return entry.sleep_time * 60
+                return entry.sleep_time.value * 60
 
     def get_min_awake_time(self) -> int:
         abs_min_awake_time = 30  # The floor value for the minimum awake time
@@ -71,7 +71,7 @@ class PowerManager(Application):
         for entry in sorted(self.config.min_awake_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
             entry: AwakeTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:
-                return max(entry.awake_time, abs_min_awake_time)
+                return max(entry.awake_time.value, abs_min_awake_time)
 
         return abs_min_awake_time
 

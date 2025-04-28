@@ -57,7 +57,7 @@ class PowerManager(Application):
         return await self.platform_iface.get_system_voltage_async()
 
     def get_sleep_time(self) -> int | None:
-        for entry in sorted(self.config.sleep_time_thresholds.elements, key=lambda x: x.voltage_threshold):
+        for entry in sorted(self.config.sleep_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
             entry: SleepTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:
                 return entry.sleep_time * 60
@@ -68,7 +68,7 @@ class PowerManager(Application):
         if self.last_voltage is None:
             return self.config.min_awake_time_thresholds.element.awake_time.default
 
-        for entry in sorted(self.config.min_awake_time_thresholds.elements, key=lambda x: x.voltage_threshold):
+        for entry in sorted(self.config.min_awake_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
             entry: AwakeTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:
                 return max(entry.awake_time, abs_min_awake_time)

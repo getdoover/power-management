@@ -197,13 +197,8 @@ class PowerManager(Application):
         await self.platform_iface.schedule_shutdown_async(30)
 
         ## Cleanly disconnect the device comms and then wait for sleep
-        try:
-            await self.close_app(with_delay=120)
-        except Exception as e:
-            log.error(f"Error closing device application for shutdown: {e}")
-
-        # Wait for the system to shutdown
-        await asyncio.sleep(120)
+        # await asyncio.sleep(20)
+        raise asyncio.CancelledError("PowerManager: go_to_sleep()")
 
     async def setup(self):
         log.info("Setting up PowerManager...")

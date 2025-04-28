@@ -1,3 +1,86 @@
 {
-    "deployment_package_dir": "deployment/"
+    "deployment_package_dir": "deployment/",
+    "power_management": {
+        "config_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "",
+            "title": "Application Config",
+            "type": "object",
+            "properties": {
+                "sleep_time_thresholds": {
+                    "title": "Sleep Time Thresholds",
+                    "x-name": "sleep_time_thresholds",
+                    "x-hidden": false,
+                    "type": "array",
+                    "items": {
+                        "title": "Sleep Time Thresholds",
+                        "x-name": "sleep_time_thresholds",
+                        "x-hidden": false,
+                        "type": "object",
+                        "properties": {
+                            "voltage_threshold": {
+                                "title": "Voltage Threshold",
+                                "x-name": "voltage_threshold",
+                                "x-hidden": false,
+                                "type": "number",
+                                "default": 11.5,
+                                "minimum": 0,
+                                "maximum": 36
+                            },
+                            "sleep_time_(minutes)": {
+                                "title": "Sleep Time (minutes)",
+                                "x-name": "sleep_time_(minutes)",
+                                "x-hidden": false,
+                                "type": "integer",
+                                "default": 30,
+                                "minimum": 0,
+                                "maximum": 3600
+                            }
+                        },
+                        "additionalElements": false,
+                        "required": []
+                    }
+                },
+                "min_awake_time_thresholds": {
+                    "title": "Min Awake Time Thresholds",
+                    "x-name": "min_awake_time_thresholds",
+                    "x-hidden": false,
+                    "type": "array",
+                    "items": {
+                        "title": "Awake Time Thresholds",
+                        "x-name": "awake_time_thresholds",
+                        "x-hidden": false,
+                        "type": "object",
+                        "properties": {
+                            "voltage_threshold": {
+                                "title": "Voltage Threshold",
+                                "x-name": "voltage_threshold",
+                                "x-hidden": false,
+                                "type": "number",
+                                "default": 11.5,
+                                "minimum": 0,
+                                "maximum": 36
+                            },
+                            "awake_time_(seconds)": {
+                                "title": "Awake Time (seconds)",
+                                "x-name": "awake_time_(seconds)",
+                                "x-hidden": false,
+                                "type": "integer",
+                                "default": 30,
+                                "minimum": 0,
+                                "maximum": 3600
+                            }
+                        },
+                        "additionalElements": false,
+                        "required": []
+                    }
+                }
+            },
+            "additionalElements": true,
+            "required": [
+                "sleep_time_thresholds",
+                "min_awake_time_thresholds"
+            ]
+        }
+    }
 }

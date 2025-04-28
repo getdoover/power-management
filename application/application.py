@@ -200,8 +200,8 @@ class PowerManager(Application):
         await self.platform_iface.schedule_shutdown_async(30)
 
         ## Cleanly disconnect the device comms and then wait for sleep
-        # await asyncio.sleep(20)
-        raise asyncio.CancelledError("PowerManager: go_to_sleep()")
+        await asyncio.sleep(40)
+        raise asyncio.CancelledError("Quitting power manager in anticipation of a system shutdown...")
 
     async def setup(self):
         log.info("Setting up PowerManager...")
@@ -209,6 +209,13 @@ class PowerManager(Application):
             return
 
         self.ui_manager.add_children(*self.ui.fetch())
+
+        # set shutdown_requested for all apps to False.
+        log.info("Setting shutdown_requested tag for all apps to False.")
+        await self.set_tag_async("shutdown_requested", False, is_global=True)
+        await self.set_tag_async("shutdown_at", None, is_global=True)
+        for k in self._tag_values.keys():
+            await self.set_tag_for_async(k, "shutdown_requested", False)
 
         ## Attempt 3 times to get a non-None voltage
         for i in range(3):

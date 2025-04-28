@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "550db7f729b4b009e4d7c0fba63550dc4e81440d89fa7520c8267ed5475f3001"
+            "sha256": "e83a7f5c4d80d4d8fa75b45d14f39ec008a771b1682e4822262798e1cd5ebf16"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -133,7 +133,7 @@
         "pydoover": {
             "git": "git+https://spaneng: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@github.com/spaneng/pydoover.git",
             "markers": "python_version >= '3.11'",
-            "ref": "7b7e85cdd1939d8b6bb7a55283aadd9e45e035c2"
+            "ref": "0e9abbbc3fb87aa014eaf7515ee5b94de13d1e99"
         },
         "requests": {
             "hashes": [

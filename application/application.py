@@ -24,6 +24,7 @@ class PowerManager(Application):
         self.scheduled_goto_sleep_time = None  ## Time that the system is scheduled to sleep
 
         self.last_voltage = None
+        self.last_temp = None
         self.last_voltage_time = None
         self.voltage_update_interval = 5
 
@@ -46,7 +47,8 @@ class PowerManager(Application):
                 self.last_voltage = round(self.last_voltage, 2)
                 self.last_voltage_time = time.time()
 
-            log.info(f"Filtered system voltage: {self.last_voltage}")
+            self.last_temp = await self.get_system_temperature()
+            log.info(f"Filtered system voltage: {self.last_voltage}, temp: {self.last_temp}")
 
     @apply_async_kalman_filter(
         process_variance=0.05,
@@ -55,6 +57,10 @@ class PowerManager(Application):
     async def get_system_voltage(self) -> float:
         # Get the current system voltage
         return await self.platform_iface.get_system_voltage_async()
+
+    @apply_async_kalman_filter(process_variance=0.5, outlier_threshold=5)
+    async def get_system_temperature(self) -> float:
+        return await self.platform_iface.get_system_temperature_async()
 
     def get_sleep_time(self) -> int | None:
         if self.last_voltage is None:
@@ -239,11 +245,11 @@ class PowerManager(Application):
         await self.assess_power()
 
         shutdown_requested = any(
-            isinstance(v, dict) and v.get("shutdown_requested", False) is True for k, v in self._tag_values.items())
+            isinstance(v, dict) and v.get("shutdown_requested", False) is True
+            for k, v in self._tag_values.items()
+        )
 
-        voltage = await self.platform_iface.get_system_voltage_async()
-        temp = await self.platform_iface.get_system_temperature_async()
-        self.ui.update(voltage, temp, not self.about_to_shutdown)
+        self.ui.update(self.last_voltage, self.last_temp, not self.about_to_shutdown)
 
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")

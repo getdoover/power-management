@@ -124,7 +124,7 @@ class PowerManager(Application):
         # search through app state for any apps that have shutdown_permitted = False
         # if they don't define it (shouldn't happen), assume True.
         for k, v in self._tag_values.items():
-            if isinstance(v, dict) and v.get("shutdown_permitted", True) is False:
+            if isinstance(v, dict) and v.get("shutdown_check_ok", True) is False:
                 log.info(f"Shutdown not permitted by {k}.")
                 return False
         return True
@@ -138,6 +138,8 @@ class PowerManager(Application):
     async def schedule_next_startup(self):
         if self.scheduled_sleep_time is None:
             self.scheduled_sleep_time = self.get_sleep_time()
+
+        log.info(f"Scheduling next startup in {self.scheduled_sleep_time} seconds...")
         await self.platform_iface.schedule_startup_async(self.scheduled_sleep_time)
 
     async def assess_power(self):
@@ -177,14 +179,16 @@ class PowerManager(Application):
         # this should run all on_shutdown_requested hooks in each app.
         await self.set_tag_async("shutdown_requested", True, is_global=True)
 
-        await asyncio.sleep(5)
+        log.info("Sleeping for 20 seconds to allow shutdown hooks to run...")
+        await asyncio.sleep(20)
 
         # for a maximum of 300 seconds (5min), check if shutdown is permitted
         for _ in range(60):
             if self.shutdown_permitted:
+                log.info("All shutdown checks passed. Proceeding to shutdown...")
                 break
             else:
-                log.info("Shutdown not permitted. Waiting...")
+                log.info("Shutdown not permitted. Waiting for 5 seconds before retrying...")
                 await asyncio.sleep(5)
 
         # either shutdown is permitted, or we've timed out. Either way, proceed to shutdown...
@@ -197,9 +201,11 @@ class PowerManager(Application):
         await self.schedule_next_startup()
 
         ## Put the system to sleep
+        log.info("Scheduling shutdown to occur in 30 seconds...")
         await self.platform_iface.schedule_shutdown_async(30)
 
         ## Cleanly disconnect the device comms and then wait for sleep
+        log.info("Waiting for device to shutdown...")
         await asyncio.sleep(40)
         raise asyncio.CancelledError("Quitting power manager in anticipation of a system shutdown...")
 
@@ -247,6 +253,7 @@ class PowerManager(Application):
         self.about_to_shutdown = True
         self.ui.is_online.update(False)
         await self.ui_manager.handle_comms_async(True)
+        log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 
 
 if __name__ == "__main__":

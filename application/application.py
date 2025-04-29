@@ -253,7 +253,7 @@ class PowerManager(Application):
 
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")
-            await self.go_to_sleep()
+            await self.maybe_schedule_sleep(self.get_sleep_time())
 
     async def on_shutdown_at(self, dt: datetime) -> None:
         self.about_to_shutdown = True

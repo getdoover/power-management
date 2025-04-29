@@ -214,7 +214,11 @@ class PowerManager(Application):
         log.info("Setting shutdown_requested tag for all apps to False.")
         await self.set_tag_async("shutdown_requested", False, is_global=True)
         await self.set_tag_async("shutdown_at", None, is_global=True)
-        for k in self._tag_values.keys():
+        for k, v in self._tag_values.items():
+            if not isinstance(v, dict) and k not in ("shutdown_requested", "shutdown_at"):
+                # skip any non-dict values (app-based tags will always be in a dict).
+                continue
+
             await self.set_tag_for_async(k, "shutdown_requested", False)
 
         ## Attempt 3 times to get a non-None voltage

@@ -1,0 +1,27 @@
+[project]
+name = "power-management"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydoover>=0.4.0",
+]
+
+[project.scripts]
+doover-app-run = "power_management:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "aiohttp>=3.11.18",
+    "grpcio>=1.71.0",
+    "protobuf>=6.30.2",
+    "pymodbus>=3.9.2",
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "requests>=2.32.3",
+]

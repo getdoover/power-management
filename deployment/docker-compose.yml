@@ -1,7 +1,0 @@
-services:
-  power-management:
-    image: ghcr.io/getdoover/power-management:main
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - APP_KEY=${APP_KEY}

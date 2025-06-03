@@ -1,6 +1,20 @@
 {
-    "deployment_package_dir": "deployment/",
     "power_management": {
+        "key": "131f0f99-d6f4-4d96-8d98-af9f34501b4c",
+        "name": "doover_solar_power_management",
+        "display_name": "Solar Power Management",
+        "description": "Manage device power and shutdown procedures on a power limited device, e.g. in a solar context.",
+        "long_description": "README.md",
+        "type": "DEV",
+        "visibility": "COR",
+        "allow_many": false,
+        "depends_on": [
+            "platform_interface"
+        ],
+        "owner_org": "36a22e32-ab81-4a39-b400-869d532a052d",
+        "image_name": "ghcr.io/getdoover/power-management:main",
+        "container_registry_profile": "88953909-e9c4-4f81-9ec0-56239d4b0a2e",
+        "build_args": "--platform linux/amd64,linux/arm64",
         "config_schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "",

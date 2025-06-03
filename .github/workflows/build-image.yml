@@ -1,7 +1,13 @@
-name: Deploy Docker Image
+name: Test, Lint & Deploy Docker Image
 
 on:
   workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Push image on failed test or linting (not recommended!)?'
+        required: true
+        type: boolean
+
   push:
     branches:
       - main
@@ -11,8 +17,18 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  lint:
+    name: Lint Code
+    uses: ./.github/workflows/run-linting.yml
+
+  test:
+    name: Test Code
+    uses: ./.github/workflows/run-tests.yml
+
   push_to_registries:
     name: Push Docker Image
+    needs: [lint, test]
+    if: ${{ needs.test.result == 'success' || (github.event_name == 'workflow_dispatch' &&  github.event.inputs.confirmation == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -21,13 +37,6 @@ jobs:
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
-
-      # this is to have permission to pull the base image...
-      - name: Log in to Docker Hub
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
-        with:
-          username: ${{ vars.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,12 +54,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Build and push Docker images
-        id: push
+      - name: Push Images
         uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
         with:
-          context: application/
-          platforms: linux/arm64
+          platforms: linux/arm64,linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

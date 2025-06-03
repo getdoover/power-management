@@ -6,8 +6,8 @@ from datetime import timedelta, datetime
 from pydoover.docker import Application, run_app
 from pydoover.utils import apply_async_kalman_filter
 
-from app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
-from app_ui import PowerManagerUI
+from .app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
+from .app_ui import PowerManagerUI
 
 log = logging.getLogger()
 
@@ -20,8 +20,12 @@ class PowerManager(Application):
         super().__init__(*args, **kwargs)
 
         self.start_time = None
-        self.scheduled_sleep_time = None  ## Secs that the system is scheduled to sleep for
-        self.scheduled_goto_sleep_time = None  ## Time that the system is scheduled to sleep
+        self.scheduled_sleep_time = (
+            None  ## Secs that the system is scheduled to sleep for
+        )
+        self.scheduled_goto_sleep_time = (
+            None  ## Time that the system is scheduled to sleep
+        )
 
         self.last_voltage = None
         self.last_temp = None
@@ -37,7 +41,10 @@ class PowerManager(Application):
 
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
-        if self.last_voltage_time is None or time.time() - self.last_voltage_time > self.voltage_update_interval:
+        if (
+            self.last_voltage_time is None
+            or time.time() - self.last_voltage_time > self.voltage_update_interval
+        ):
             try:
                 self.last_voltage = await self.get_system_voltage()
             except Exception as e:
@@ -48,7 +55,9 @@ class PowerManager(Application):
                 self.last_voltage_time = time.time()
 
             self.last_temp = await self.get_system_temperature()
-            log.info(f"Filtered system voltage: {self.last_voltage}, temp: {self.last_temp}")
+            log.info(
+                f"Filtered system voltage: {self.last_voltage}, temp: {self.last_temp}"
+            )
 
     @apply_async_kalman_filter(
         process_variance=0.05,
@@ -66,7 +75,10 @@ class PowerManager(Application):
         if self.last_voltage is None:
             return None
 
-        for entry in sorted(self.config.sleep_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
+        for entry in sorted(
+            self.config.sleep_time_thresholds.elements,
+            key=lambda x: x.voltage_threshold.value,
+        ):
             entry: SleepTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:
                 return entry.sleep_time.value * 60
@@ -77,7 +89,10 @@ class PowerManager(Application):
         if self.last_voltage is None:
             return self.config.min_awake_time_thresholds.element.awake_time.default
 
-        for entry in sorted(self.config.min_awake_time_thresholds.elements, key=lambda x: x.voltage_threshold.value):
+        for entry in sorted(
+            self.config.min_awake_time_thresholds.elements,
+            key=lambda x: x.voltage_threshold.value,
+        ):
             entry: AwakeTimeThresholds
             if self.last_voltage <= entry.voltage_threshold.value:
                 return max(entry.awake_time.value, abs_min_awake_time)
@@ -97,7 +112,9 @@ class PowerManager(Application):
 
         if self.get_awake_time() < (self.get_min_awake_time() - time_till_sleep):
             time_till_sleep = self.get_min_awake_time() - self.get_awake_time()
-            log.info("Minimum awake time not met: {} seconds to go".format(time_till_sleep))
+            log.info(
+                "Minimum awake time not met: {} seconds to go".format(time_till_sleep)
+            )
             return
 
         # if not self.shutdown_permitted():
@@ -194,7 +211,9 @@ class PowerManager(Application):
                 log.info("All shutdown checks passed. Proceeding to shutdown...")
                 break
             else:
-                log.info("Shutdown not permitted. Waiting for 5 seconds before retrying...")
+                log.info(
+                    "Shutdown not permitted. Waiting for 5 seconds before retrying..."
+                )
                 await asyncio.sleep(5)
 
         # either shutdown is permitted, or we've timed out. Either way, proceed to shutdown...
@@ -213,7 +232,9 @@ class PowerManager(Application):
         ## Cleanly disconnect the device comms and then wait for sleep
         log.info("Waiting for device to shutdown...")
         await asyncio.sleep(40)
-        raise asyncio.CancelledError("Quitting power manager in anticipation of a system shutdown...")
+        raise asyncio.CancelledError(
+            "Quitting power manager in anticipation of a system shutdown..."
+        )
 
     async def setup(self):
         log.info("Setting up PowerManager...")
@@ -227,7 +248,10 @@ class PowerManager(Application):
         await self.set_tag_async("shutdown_requested", False, is_global=True)
         await self.set_tag_async("shutdown_at", None, is_global=True)
         for k, v in self._tag_values.items():
-            if not isinstance(v, dict) and k not in ("shutdown_requested", "shutdown_at"):
+            if not isinstance(v, dict) and k not in (
+                "shutdown_requested",
+                "shutdown_at",
+            ):
                 # skip any non-dict values (app-based tags will always be in a dict).
                 continue
 

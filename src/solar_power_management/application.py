@@ -14,18 +14,20 @@ log = logging.getLogger()
 
 class PowerManager(Application):
     config: PowerManagerConfig
-    ui: PowerManagerUI()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.start_time = None
-        self.scheduled_sleep_time = (
-            None  ## Secs that the system is scheduled to sleep for
-        )
-        self.scheduled_goto_sleep_time = (
-            None  ## Time that the system is scheduled to sleep
-        )
+
+        # Secs that the system is scheduled to sleep for
+        self.scheduled_sleep_time = None
+        # Time that the system is scheduled to sleep
+        self.scheduled_goto_sleep_time = None
+
+        self.soft_watchdog_period_mins = 3 * 60  # 3 hours
+        self.last_watchdog_reset_time = None
+        self.watchdog_reset_interval_secs = 20
 
         self.last_voltage = None
         self.last_temp = None
@@ -35,9 +37,6 @@ class PowerManager(Application):
         self.about_to_shutdown = False
 
         self.ui = PowerManagerUI()
-
-    def is_active(self):
-        return bool(self.config)
 
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
@@ -99,21 +98,30 @@ class PowerManager(Application):
 
         return abs_min_awake_time
 
-    def get_awake_time(self) -> int:
+    @property
+    def awake_time(self) -> int:
         if self.start_time is None:
             self.start_time = time.time()
+
         return int(time.time() - self.start_time)
 
     async def maybe_schedule_sleep(self, sleep_time: int, time_till_sleep: int = 20):
         if self.scheduled_goto_sleep_time is not None:
-            if self.get_time_till_sleep() is not None:
-                log.warning(f"Time till sleep: {self.get_time_till_sleep()}")
+            if self.time_until_sleep is not None:
+                log.warning(f"Time till sleep: {self.time_until_sleep}")
             return
 
-        if self.get_awake_time() < (self.get_min_awake_time() - time_till_sleep):
-            time_till_sleep = self.get_min_awake_time() - self.get_awake_time()
+        if self.awake_time < (self.get_min_awake_time() - time_till_sleep):
+            time_till_sleep = self.get_min_awake_time() - self.awake_time
+            log.info(f"Minimum awake time not met: {time_till_sleep} seconds to go")
+            return
+
+        config_override_secs = self.config.override_shutdown_permission_mins.value * 60
+        if self.awake_time < config_override_secs:
+            time_left = config_override_secs - self.awake_time
             log.info(
-                "Minimum awake time not met: {} seconds to go".format(time_till_sleep)
+                f"Application config requires minimum awake time of {config_override_secs}sec. "
+                f"Waiting {time_left} before initiating a shutdown..."
             )
             return
 
@@ -132,12 +140,14 @@ class PowerManager(Application):
 
         self.ui.update_connection_info(sleep_time, time_till_sleep + sleep_time)
 
-    def get_time_till_sleep(self):
+    @property
+    def time_until_sleep(self) -> int | None:
         if self.scheduled_goto_sleep_time is None:
             return None
         return int(self.scheduled_goto_sleep_time - time.time())
 
-    def is_ready_to_sleep(self):
+    @property
+    def is_ready_to_sleep(self) -> bool:
         if self.scheduled_goto_sleep_time is None:
             return False
         return time.time() >= self.scheduled_goto_sleep_time
@@ -169,17 +179,16 @@ class PowerManager(Application):
         """
         Monitor system voltage, determine sleep time, and handle shutdown.
         """
-        if not self.is_active():
-            return
-
         if self.start_time is None:
+            log.info("Setting start time")
             self.start_time = time.time()
 
         # Update the system voltage
         await self.update_voltage()
 
         # If the system is already scheduled to sleep, check if it's time to sleep
-        if self.is_ready_to_sleep():
+        if self.is_ready_to_sleep:
+            log.info("Ready to sleep. Requesting shutdown...")
             await self.request_shutdown_async()
             # await self.go_to_sleep()
             return
@@ -187,9 +196,11 @@ class PowerManager(Application):
         # Determine the sleep time from the config & current voltage
         sleep_time = self.get_sleep_time()
         if sleep_time is None:
+            log.info("No sleep time found.")
             return
 
         # Attempt to schedule the sleep
+        log.info(f"Scheduling next sleep in {sleep_time} seconds...")
         await self.maybe_schedule_sleep(sleep_time)
 
     async def go_to_sleep(self):
@@ -200,7 +211,7 @@ class PowerManager(Application):
 
         log.info("Setting shutdown_requested hooks")
         # this should run all on_shutdown_requested hooks in each app.
-        await self.set_tag_async("shutdown_requested", True, is_global=True)
+        await self.set_tag_async("shutdown_requested", True)
 
         log.info("Sleeping for 20 seconds to allow shutdown hooks to run...")
         await asyncio.sleep(20)
@@ -220,7 +231,7 @@ class PowerManager(Application):
 
         ## Run shutdown hooks
         shutdown_at = datetime.now() + timedelta(seconds=30)
-        await self.set_tag_async("shutdown_at", shutdown_at.timestamp(), is_global=True)
+        await self.set_tag_async("shutdown_at", shutdown_at.timestamp())
 
         ## schedule the next startup
         await self.schedule_next_startup()
@@ -236,26 +247,48 @@ class PowerManager(Application):
             "Quitting power manager in anticipation of a system shutdown..."
         )
 
+    async def maybe_reset_soft_watchdog(self):
+        """Continually reset the soft watchdog to 3 hours from now.
+
+        This ensures that if anything goes wrong, the system will shutdown and the RP2040 will reboot it.
+        """
+        if self.last_watchdog_reset_time:
+            flag = (
+                time.time() - self.last_watchdog_reset_time
+                > self.watchdog_reset_interval_secs
+            )
+        else:
+            flag = True
+
+        if flag:
+            try:
+                await self.platform_iface.schedule_shutdown_async(
+                    self.soft_watchdog_period_mins * 60
+                )
+            except Exception as e:
+                log.error(f"Error scheduling shutdown for soft watchdog: {e}")
+            else:
+                self.last_watchdog_reset_time = time.time()
+
     async def setup(self):
         log.info("Setting up PowerManager...")
-        if not self.is_active():
-            return
+        await self.maybe_reset_soft_watchdog()
 
         self.ui_manager.add_children(*self.ui.fetch())
 
         # set shutdown_requested for all apps to False.
         log.info("Setting shutdown_requested tag for all apps to False.")
-        await self.set_tag_async("shutdown_requested", False, is_global=True)
-        await self.set_tag_async("shutdown_at", None, is_global=True)
-        for k, v in self._tag_values.items():
-            if not isinstance(v, dict) and k not in (
+        await self.set_tag_async("shutdown_requested", False)
+        await self.set_tag_async("shutdown_at", None)
+        for app_key, v in self._tag_values.items():
+            if not isinstance(v, dict) and app_key not in (
                 "shutdown_requested",
                 "shutdown_at",
             ):
                 # skip any non-dict values (app-based tags will always be in a dict).
                 continue
 
-            await self.set_tag_for_async(k, "shutdown_requested", False)
+            await self.set_tag_async("shutdown_requested", False, app_key)
 
         ## Attempt 3 times to get a non-None voltage
         for i in range(3):
@@ -266,6 +299,7 @@ class PowerManager(Application):
                 break
 
     async def main_loop(self):
+        await self.maybe_reset_soft_watchdog()
         await self.assess_power()
 
         shutdown_requested = any(

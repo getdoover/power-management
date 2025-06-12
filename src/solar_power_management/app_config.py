@@ -35,8 +35,11 @@ class PowerManagerConfig(config.Schema):
         self.min_awake_time_thresholds = config.Array(
             "Min Awake Time Thresholds", element=AwakeTimeThresholds()
         )
+        self.override_shutdown_permission_mins = config.Integer(
+            "Override Shutdown Permission in Minutes", default=6 * 60, minimum=10, maximum=1440
+        )
 
 
 if __name__ == "__main__":
     c = PowerManagerConfig()
-    c.export(Path("../doover_config.json"), "power_management")
+    PowerManagerConfig().export(Path(__file__).parents[2] / "doover_config.json", "solar_power_management")

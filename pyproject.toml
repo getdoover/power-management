@@ -1,5 +1,5 @@
 [project]
-name = "power-management"
+name = "solar-power-management"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-doover-app-run = "power_management:main"
+doover-app-run = "solar_power_management:main"
 
 [build-system]
 requires = ["hatchling"]

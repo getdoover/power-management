@@ -307,11 +307,18 @@ class PowerManager(Application):
             for k, v in self._tag_values.items()
         )
 
-        self.ui.update(self.last_voltage, self.last_temp, not self.about_to_shutdown)
+        self.ui.update(self.last_voltage, self.last_temp, not self.about_to_shutdown, self.is_battery_low)
 
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")
             await self.maybe_schedule_sleep(self.get_sleep_time())
+
+    @property
+    def is_battery_low(self) -> bool:
+        battery_low_alarm = self.ui.low_batt_alarm.current_value
+        if self.last_voltage is None or battery_low_alarm is None:
+            return False
+        return self.last_voltage < battery_low_alarm
 
     async def on_shutdown_at(self, dt: datetime) -> None:
         self.about_to_shutdown = True

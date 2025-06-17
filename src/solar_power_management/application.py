@@ -275,6 +275,7 @@ class PowerManager(Application):
         await self.maybe_reset_soft_watchdog()
 
         self.ui_manager.add_children(*self.ui.fetch())
+        self.ui_manager.set_display_name("Power & Battery")
 
         # set shutdown_requested for all apps to False.
         log.info("Setting shutdown_requested tag for all apps to False.")

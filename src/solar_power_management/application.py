@@ -308,6 +308,14 @@ class PowerManager(Application):
             for k, v in self._tag_values.items()
         )
 
+        if self.is_battery_low:
+            if not self.get_tag("low_battery_warning_sent", self.app_key):
+                message = "Battery voltage is low: {self.last_voltage}V."
+                await self.publish_to_channel("notifications", message)
+                await self.set_tag_async("low_battery_warning_sent", True)
+        else:
+            await self.set_tag_async("low_battery_warning_sent", False)
+
         self.ui.update(self.last_voltage, self.last_temp, not self.about_to_shutdown, self.is_battery_low)
 
         if shutdown_requested:
@@ -325,6 +333,7 @@ class PowerManager(Application):
         self.about_to_shutdown = True
         self.ui.is_online.update(False)
         await self.ui_manager.handle_comms_async(True)
+        await self.device_agent.publish_to_channel("tag_values", {}, record_log=True, max_age=-1)
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 
 

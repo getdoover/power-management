@@ -15,6 +15,11 @@
         "image_name": "ghcr.io/getdoover/power-management:main",
         "container_registry_profile": "88953909-e9c4-4f81-9ec0-56239d4b0a2e",
         "build_args": "--platform linux/amd64,linux/arm64",
+        "staging_config": {
+            "key": "99110308-58ea-4980-8f40-49bd33dee953",
+            "owner_org_key": "3666ee04-ced7-4621-8b96-fdbd43c1e868",
+            "container_registry_profile_key": "d216c926-f465-4ecb-9156-6841762d6606"
+        },
         "config_schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "",

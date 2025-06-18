@@ -47,7 +47,7 @@ class PowerManagerConfig(config.Schema):
         )
         self.position = config.Integer(
             "Position",
-            default=70,  # fairly low
+            default=120,  # fairly low
             minimum=0,
             maximum=100,
             description="The position of the power management app in the UI. Smaller is higher, larger is lower.",

@@ -109,7 +109,7 @@
                     "x-hidden": false,
                     "type": "integer",
                     "description": "The position of the power management app in the UI. Smaller is higher, larger is lower.",
-                    "default": 70,
+                    "default": 120,
                     "minimum": 0,
                     "maximum": 100
                 }

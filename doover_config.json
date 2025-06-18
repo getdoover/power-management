@@ -102,6 +102,16 @@
                     "default": 360,
                     "minimum": 10,
                     "maximum": 1440
+                },
+                "position": {
+                    "title": "Position",
+                    "x-name": "position",
+                    "x-hidden": false,
+                    "type": "integer",
+                    "description": "The position of the power management app in the UI. Smaller is higher, larger is lower.",
+                    "default": 70,
+                    "minimum": 0,
+                    "maximum": 100
                 }
             },
             "additionalElements": true,

@@ -45,6 +45,13 @@ class PowerManagerConfig(config.Schema):
             minimum=10,
             maximum=1440,
         )
+        self.position = config.Integer(
+            "Position",
+            default=70,  # fairly low
+            minimum=0,
+            maximum=100,
+            description="The position of the power management app in the UI. Smaller is higher, larger is lower.",
+        )
 
     @property
     def sleep_time_threshold_lookup(self) -> list[tuple[float, int]]:

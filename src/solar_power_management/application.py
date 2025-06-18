@@ -117,18 +117,20 @@ class PowerManager(Application):
             log.info(f"Minimum awake time not met: {time_till_sleep} seconds to go")
             return
 
-        config_override_secs = self.config.override_shutdown_permission_mins.value * 60
-        if self.awake_time < config_override_secs:
+        # alert apps that they must report if they can shutdown or not.
+        await self.set_tag_async("shutdown_requested", True)
+
+        # this will fail the first time because apps won't respond
+        # quick enough but should run OK on consecutive calls.
+        # this is less 300 seconds because we check for a further 5min before actually setting the shutdown.
+        # probably unnecessary?
+        config_override_secs = self.config.override_shutdown_permission_mins.value * 60 - 300
+        if self.shutdown_permitted is False and self.awake_time < config_override_secs:
             time_left = config_override_secs - self.awake_time
             log.info(
-                f"Application config requires minimum awake time of {config_override_secs}sec. "
-                f"Waiting {time_left} before initiating a shutdown..."
+                f"One of more app denied a shutdown and we can only override this in {time_left} seconds..."
             )
             return
-
-        # if not self.shutdown_permitted():
-        #     log.info("Scheduling of shutdown not yet permitted by application. Waiting...")
-        #     return
 
         immunity_time = await self.get_immunity_time()
         if immunity_time is not None:
@@ -190,8 +192,8 @@ class PowerManager(Application):
         # If the system is already scheduled to sleep, check if it's time to sleep
         if self.is_ready_to_sleep:
             log.info("Ready to sleep. Requesting shutdown...")
-            await self.request_shutdown_async()
-            # await self.go_to_sleep()
+            # await self.request_shutdown_async()
+            await self.go_to_sleep()
             return
 
         # Determine the sleep time from the config & current voltage
@@ -277,6 +279,7 @@ class PowerManager(Application):
 
         self.ui_manager.add_children(*self.ui.fetch())
         self.ui_manager.set_display_name("Power & Battery")
+        self.ui_manager.set_position(self.config.position.value)
 
         # set shutdown_requested for all apps to False.
         log.info("Setting shutdown_requested tag for all apps to False.")
@@ -311,7 +314,7 @@ class PowerManager(Application):
 
         if self.is_battery_low:
             if not self.get_tag("low_battery_warning_sent", self.app_key):
-                message = "Battery voltage is low: {self.last_voltage}V."
+                message = f"Battery voltage is low: {self.last_voltage}V."
                 await self.publish_to_channel("notifications", message)
                 await self.set_tag_async("low_battery_warning_sent", True)
         else:

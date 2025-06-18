@@ -49,8 +49,8 @@ class PowerManagerConfig(config.Schema):
             "Position",
             default=120,  # fairly low
             minimum=0,
-            maximum=100,
-            description="The position of the power management app in the UI. Smaller is higher, larger is lower.",
+            maximum=200,
+            description="The position of the power management app in the UI. Smaller is higher, larger is lower. 100 is the default position of most apps.",
         )
 
     @property

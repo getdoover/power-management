@@ -292,7 +292,7 @@ class PowerManager(Application):
         await self.set_global_tag_async("shutdown_requested", False)
         await self.set_global_tag_async("shutdown_at", None)
         for app_key, v in self._tag_values.items():
-            if not isinstance(v, dict) and app_key not in (
+            if not isinstance(v, dict) or app_key in (
                 "shutdown_requested",
                 "shutdown_at",
             ):

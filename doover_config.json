@@ -108,10 +108,10 @@
                     "x-name": "position",
                     "x-hidden": false,
                     "type": "integer",
-                    "description": "The position of the power management app in the UI. Smaller is higher, larger is lower.",
+                    "description": "The position of the power management app in the UI. Smaller is higher, larger is lower. 100 is the default position of most apps.",
                     "default": 120,
                     "minimum": 0,
-                    "maximum": 100
+                    "maximum": 200
                 }
             },
             "additionalElements": true,

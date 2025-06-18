@@ -118,7 +118,7 @@ class PowerManager(Application):
             return
 
         # alert apps that they must report if they can shutdown or not.
-        await self.set_tag_async("shutdown_requested", True)
+        await self.set_global_tag_async("shutdown_requested", True)
 
         # this will fail the first time because apps won't respond
         # quick enough but should run OK on consecutive calls.
@@ -214,7 +214,7 @@ class PowerManager(Application):
 
         log.info("Setting shutdown_requested hooks")
         # this should run all on_shutdown_requested hooks in each app.
-        await self.set_tag_async("shutdown_requested", True)
+        await self.set_global_tag_async("shutdown_requested", True)
 
         log.info("Sleeping for 20 seconds to allow shutdown hooks to run...")
         await asyncio.sleep(20)
@@ -234,7 +234,7 @@ class PowerManager(Application):
 
         ## Run shutdown hooks
         shutdown_at = datetime.now() + timedelta(seconds=30)
-        await self.set_tag_async("shutdown_at", shutdown_at.timestamp())
+        await self.set_global_tag_async("shutdown_at", shutdown_at.timestamp())
 
         ## schedule the next startup
         await self.schedule_next_startup()
@@ -283,8 +283,8 @@ class PowerManager(Application):
 
         # set shutdown_requested for all apps to False.
         log.info("Setting shutdown_requested tag for all apps to False.")
-        await self.set_tag_async("shutdown_requested", False)
-        await self.set_tag_async("shutdown_at", None)
+        await self.set_global_tag_async("shutdown_requested", False)
+        await self.set_global_tag_async("shutdown_at", None)
         for app_key, v in self._tag_values.items():
             if not isinstance(v, dict) and app_key not in (
                 "shutdown_requested",
@@ -342,9 +342,6 @@ class PowerManager(Application):
         self.about_to_shutdown = True
         self.ui.is_online.update(False)
         await self.ui_manager.handle_comms_async(True)
-        await self.device_agent.publish_to_channel(
-            "tag_values", {}, record_log=True, max_age=-1
-        )
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 
 

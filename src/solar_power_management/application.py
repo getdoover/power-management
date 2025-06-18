@@ -6,7 +6,7 @@ from datetime import timedelta, datetime
 from pydoover.docker import Application, run_app
 from pydoover.utils import apply_async_kalman_filter
 
-from .app_config import PowerManagerConfig, SleepTimeThresholds, AwakeTimeThresholds
+from .app_config import PowerManagerConfig
 from .app_ui import PowerManagerUI
 
 log = logging.getLogger()
@@ -74,27 +74,28 @@ class PowerManager(Application):
         if self.last_voltage is None:
             return None
 
-        for entry in sorted(
-            self.config.sleep_time_thresholds.elements,
-            key=lambda x: x.voltage_threshold.value,
+        for voltage, sleep_time in sorted(
+            self.config.sleep_time_threshold_lookup, key=lambda x: x[0]
         ):
-            entry: SleepTimeThresholds
-            if self.last_voltage <= entry.voltage_threshold.value:
-                return entry.sleep_time.value * 60
+            if self.last_voltage <= voltage:
+                log.info(f"Sleep time determined from config: {sleep_time} seconds")
+                return sleep_time * 60
 
     def get_min_awake_time(self) -> int:
-        abs_min_awake_time = 30  # The floor value for the minimum awake time
+        abs_min_awake_time = 90  # The floor value for the minimum awake time
 
         if self.last_voltage is None:
-            return self.config.min_awake_time_thresholds.element.awake_time.default
+            return max(
+                self.config.min_awake_time_thresholds.element.awake_time.default,
+                abs_min_awake_time,
+            )
 
-        for entry in sorted(
-            self.config.min_awake_time_thresholds.elements,
-            key=lambda x: x.voltage_threshold.value,
+        for voltage, awake_time in sorted(
+            self.config.min_awake_time_threshold_lookup, key=lambda x: x[0]
         ):
-            entry: AwakeTimeThresholds
-            if self.last_voltage <= entry.voltage_threshold.value:
-                return max(entry.awake_time.value, abs_min_awake_time)
+            if self.last_voltage <= voltage:
+                log.info(f"Min awake time determined from config: {awake_time} seconds")
+                return max(abs_min_awake_time, awake_time)
 
         return abs_min_awake_time
 
@@ -316,7 +317,12 @@ class PowerManager(Application):
         else:
             await self.set_tag_async("low_battery_warning_sent", False)
 
-        self.ui.update(self.last_voltage, self.last_temp, not self.about_to_shutdown, self.is_battery_low)
+        self.ui.update(
+            self.last_voltage,
+            self.last_temp,
+            not self.about_to_shutdown,
+            self.is_battery_low,
+        )
 
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")
@@ -333,7 +339,9 @@ class PowerManager(Application):
         self.about_to_shutdown = True
         self.ui.is_online.update(False)
         await self.ui_manager.handle_comms_async(True)
-        await self.device_agent.publish_to_channel("tag_values", {}, record_log=True, max_age=-1)
+        await self.device_agent.publish_to_channel(
+            "tag_values", {}, record_log=True, max_age=-1
+        )
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 
 

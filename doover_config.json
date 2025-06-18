@@ -29,7 +29,7 @@
                 "sleep_time_thresholds": {
                     "title": "Sleep Time Thresholds",
                     "x-name": "sleep_time_thresholds",
-                    "x-hidden": false,
+                    "x-hidden": true,
                     "type": "array",
                     "items": {
                         "title": "Sleep Time Thresholds",
@@ -63,7 +63,7 @@
                 "min_awake_time_thresholds": {
                     "title": "Min Awake Time Thresholds",
                     "x-name": "min_awake_time_thresholds",
-                    "x-hidden": false,
+                    "x-hidden": true,
                     "type": "array",
                     "items": {
                         "title": "Awake Time Thresholds",
@@ -85,7 +85,7 @@
                                 "x-name": "awake_time_(seconds)",
                                 "x-hidden": false,
                                 "type": "integer",
-                                "default": 30,
+                                "default": 90,
                                 "minimum": 0,
                                 "maximum": 3600
                             }

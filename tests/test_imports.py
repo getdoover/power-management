@@ -24,7 +24,6 @@ def test_ui():
     assert PowerManagerUI
 
 
-
 # def test_state():
 #     from application.app_state import SampleState
 #     assert SampleState

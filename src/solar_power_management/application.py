@@ -124,7 +124,9 @@ class PowerManager(Application):
         # quick enough but should run OK on consecutive calls.
         # this is less 300 seconds because we check for a further 5min before actually setting the shutdown.
         # probably unnecessary?
-        config_override_secs = self.config.override_shutdown_permission_mins.value * 60 - 300
+        config_override_secs = (
+            self.config.override_shutdown_permission_mins.value * 60 - 300
+        )
         if self.shutdown_permitted is False and self.awake_time < config_override_secs:
             time_left = config_override_secs - self.awake_time
             log.info(
@@ -231,17 +233,21 @@ class PowerManager(Application):
                 await asyncio.sleep(5)
 
         # either shutdown is permitted, or we've timed out. Either way, proceed to shutdown...
+        shutdown_grace_period = 20
 
         ## Run shutdown hooks
-        shutdown_at = datetime.now() + timedelta(seconds=30)
+        shutdown_at = datetime.now() + timedelta(seconds=shutdown_grace_period)
         await self.set_global_tag_async("shutdown_at", shutdown_at.timestamp())
 
         ## schedule the next startup
         await self.schedule_next_startup()
 
         ## Put the system to sleep
-        log.info("Scheduling shutdown to occur in 30 seconds...")
-        await self.platform_iface.schedule_shutdown_async(30)
+        log.info(f"Scheduling shutdown to occur in {shutdown_grace_period} seconds...")
+        await asyncio.sleep(shutdown_grace_period)
+        log.info("Scheduling a hard shutdown in 60 seconds time as a safety net")
+        await self.platform_iface.schedule_shutdown_async(60)
+        await self.platform_iface.shutdown_async()
 
         ## Cleanly disconnect the device comms and then wait for sleep
         log.info("Waiting for device to shutdown...")

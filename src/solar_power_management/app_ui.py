@@ -60,4 +60,4 @@ class PowerManagerUI:
     def update_connection_info(self, period: int, next_connection: int):
         self.connection_info.connection_period = period
         self.connection_info.next_connection = next_connection
-        self.connection_info.offline_after = next_connection * 2
+        self.connection_info.offline_after = next_connection * 5

@@ -326,7 +326,8 @@ class PowerManager(Application):
         else:
             await self.set_tag_async("low_battery_warning_sent", False)
 
-        is_immune = await self.get_immunity_time() is not None
+        immunity_time = await self.get_immunity_time()
+        is_immune = immunity_time is not None and immunity_time > 60
 
         self.ui.update(
             self.last_voltage,

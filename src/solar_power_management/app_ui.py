@@ -45,6 +45,12 @@ class PowerManagerUI:
             hidden=True,
         )
 
+        self.about_to_sleep_warning = ui.WarningIndicator(
+            "AboutToSleepWarning",
+            "Device is about to sleep",
+            hidden=True,
+        )
+
     def fetch(self):
         return (
             self.connection_info,
@@ -54,16 +60,23 @@ class PowerManagerUI:
             self.low_batt_alarm,
             self.low_batt_warning,
             self.is_immune_warning,
+            self.about_to_sleep_warning,
         )
 
     def update(
-        self, voltage: float, temperature: float, is_online: bool, is_battery_low: bool, is_immune: bool,
+        self, voltage: float, temperature: float, is_online: bool, is_battery_low: bool, is_immune: bool, sleep_warning_time: bool = False
     ):
         self.system_voltage.update(voltage)
         self.system_temperature.update(temperature)
         self.is_online.update(is_online)
         self.low_batt_warning.hidden = not is_battery_low
         self.is_immune_warning.hidden = not is_immune
+
+        if sleep_warning_time:
+            self.about_to_sleep_warning.hidden = False
+            self.about_to_sleep_warning.display_name = f"Device will sleep in {sleep_warning_time} seconds"
+        else:
+            self.about_to_sleep_warning.hidden = True
 
     def update_connection_info(self, period: int, next_connection: int):
         self.connection_info.connection_period = period

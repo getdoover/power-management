@@ -326,11 +326,14 @@ class PowerManager(Application):
         else:
             await self.set_tag_async("low_battery_warning_sent", False)
 
+        is_immune = await self.get_immunity_time() is not None
+
         self.ui.update(
             self.last_voltage,
             self.last_temp,
             not self.about_to_shutdown,
             self.is_battery_low,
+            is_immune,
         )
 
         if shutdown_requested:

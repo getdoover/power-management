@@ -39,6 +39,12 @@ class PowerManagerUI:
             "Low Battery",
         )
 
+        self.is_immune_warning = ui.WarningIndicator(
+            "ImmuneWarning",
+            "Device in Immunity Mode",
+            hidden=True,
+        )
+
     def fetch(self):
         return (
             self.connection_info,
@@ -47,15 +53,17 @@ class PowerManagerUI:
             self.is_online,
             self.low_batt_alarm,
             self.low_batt_warning,
+            self.is_immune_warning,
         )
 
     def update(
-        self, voltage: float, temperature: float, is_online: bool, is_battery_low: bool
+        self, voltage: float, temperature: float, is_online: bool, is_battery_low: bool, is_immune: bool,
     ):
         self.system_voltage.update(voltage)
         self.system_temperature.update(temperature)
         self.is_online.update(is_online)
         self.low_batt_warning.hidden = not is_battery_low
+        self.is_immune_warning.hidden = not is_immune
 
     def update_connection_info(self, period: int, next_connection: int):
         self.connection_info.connection_period = period

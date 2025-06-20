@@ -326,14 +326,15 @@ class PowerManager(Application):
         else:
             await self.set_tag_async("low_battery_warning_sent", False)
 
-        # Update the UI with the latest info
-        await self.update_ui()
+        # Refresh the UI with the latest info
+        await self.refresh_ui()
 
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")
             await self.maybe_schedule_sleep(self.get_sleep_time())
 
-    async def update_ui(self):
+    # This can't be called 'update_ui' because it conflicts with the UI update method on the Application class.
+    async def refresh_ui(self):
         """Update the UI with the latest info """
         
         immunity_time = await self.get_immunity_time()
@@ -360,7 +361,7 @@ class PowerManager(Application):
 
     async def on_shutdown_at(self, dt: datetime) -> None:
         self.about_to_shutdown = True
-        await self.update_ui()
+        await self.refresh_ui()
         await self.ui_manager.handle_comms_async(True)
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 

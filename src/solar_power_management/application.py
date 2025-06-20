@@ -323,7 +323,7 @@ class PowerManager(Application):
             if not self.get_tag("low_battery_warning_sent", self.app_key):
                 message = f"Battery voltage is low: {self.last_voltage}V."
                 log.info(f"Sending low battery message: {message}")
-                await self.publish_to_channel("significantEvents", message)
+                await self.publish_to_channel("significantEvent", message)
                 await self.set_tag_async("low_battery_warning_sent", True)
         else:
             await self.set_tag_async("low_battery_warning_sent", False)

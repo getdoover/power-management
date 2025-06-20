@@ -149,7 +149,10 @@ class PowerManager(Application):
     def time_until_sleep(self) -> int | None:
         if self.scheduled_goto_sleep_time is None:
             return None
-        return int(self.scheduled_goto_sleep_time - time.time())
+        ## Calculate the time until the system is scheduled to sleep.
+        # scheduled_goto_sleep_time is the time when the system will start the sleep process
+        result = int(self.scheduled_goto_sleep_time - time.time() + self.shutdown_process_time)
+        return max(result, 0)
 
     @property
     def is_ready_to_sleep(self) -> bool:
@@ -208,6 +211,11 @@ class PowerManager(Application):
         log.info(f"Scheduling next sleep in {sleep_time} seconds...")
         await self.maybe_schedule_sleep(sleep_time)
 
+    @property
+    def shutdown_process_time(self) -> int:
+        """Return the time it takes to shutdown the system."""
+        return 40
+
     async def go_to_sleep(self):
         """
         Put the system to sleep.
@@ -238,7 +246,6 @@ class PowerManager(Application):
         ## Run shutdown hooks
         shutdown_at = datetime.now() + timedelta(seconds=shutdown_grace_period)
         await self.set_global_tag_async("shutdown_at", shutdown_at.timestamp())
-        await self.run_shutdown_hook(shutdown_at)
 
         ## schedule the next startup
         await self.schedule_next_startup()
@@ -246,6 +253,8 @@ class PowerManager(Application):
         ## Put the system to sleep
         log.info(f"Scheduling shutdown to occur in {shutdown_grace_period} seconds...")
         await asyncio.sleep(shutdown_grace_period)
+        await self.run_shutdown_hook(shutdown_at)
+
         log.info("Scheduling a hard shutdown in 60 seconds time as a safety net")
         await self.platform_iface.schedule_shutdown_async(60)
         await self.platform_iface.shutdown_async()
@@ -365,6 +374,7 @@ class PowerManager(Application):
         await self.refresh_ui()
         await self.ui_manager.handle_comms_async(True)
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
+        await asyncio.sleep(3) # Allow time for the UI to update before shutdown
 
 
 if __name__ == "__main__":

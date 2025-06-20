@@ -340,7 +340,7 @@ class PowerManager(Application):
         is_immune = immunity_time is not None and immunity_time > 60
 
         ## Show a warning if the device is about to sleep, but clear it if its about to shutdown so the warning isn't left on while asleep
-        sleep_warning_time = self.time_until_sleep if self.time_until_sleep < 60 and not self.about_to_shutdown else None
+        sleep_warning_time = self.time_until_sleep if self.time_until_sleep and self.time_until_sleep < 60 and not self.about_to_shutdown else None
 
         self.ui.update(
             self.last_voltage,

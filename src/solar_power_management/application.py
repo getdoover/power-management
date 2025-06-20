@@ -170,7 +170,7 @@ class PowerManager(Application):
                 return False
         return True
 
-    async def get_immunity_time(self):
+    async def get_immunity_time(self) -> int | None:
         immunity_secs = await self.platform_iface.get_immunity_seconds_async()
         if immunity_secs is not None and immunity_secs <= 1:
             immunity_secs = None
@@ -331,7 +331,8 @@ class PowerManager(Application):
         if self.is_battery_low:
             if not self.get_tag("low_battery_warning_sent", self.app_key):
                 message = f"Battery voltage is low: {self.last_voltage}V."
-                await self.publish_to_channel("notifications", message)
+                log.info(f"Sending low battery message: {message}")
+                await self.publish_to_channel("significantEvent", message)
                 await self.set_tag_async("low_battery_warning_sent", True)
         else:
             await self.set_tag_async("low_battery_warning_sent", False)
@@ -345,13 +346,19 @@ class PowerManager(Application):
 
     # This can't be called 'update_ui' because it conflicts with the UI update method on the Application class.
     async def refresh_ui(self):
-        """Update the UI with the latest info """
-        
+        """Update the UI with the latest info"""
+
         immunity_time = await self.get_immunity_time()
-        is_immune = immunity_time is not None and immunity_time > 60
+        is_immune = immunity_time and immunity_time > 60 or False
 
         ## Show a warning if the device is about to sleep, but clear it if its about to shutdown so the warning isn't left on while asleep
-        sleep_warning_time = self.time_until_sleep if self.time_until_sleep and self.time_until_sleep < 60 and not self.about_to_shutdown else None
+        sleep_warning_time = (
+            self.time_until_sleep
+            if self.time_until_sleep
+            and self.time_until_sleep < 60
+            and not self.about_to_shutdown
+            else None
+        )
 
         self.ui.update(
             self.last_voltage,

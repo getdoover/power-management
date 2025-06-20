@@ -238,6 +238,7 @@ class PowerManager(Application):
         ## Run shutdown hooks
         shutdown_at = datetime.now() + timedelta(seconds=shutdown_grace_period)
         await self.set_global_tag_async("shutdown_at", shutdown_at.timestamp())
+        await self.run_shutdown_hook(shutdown_at)
 
         ## schedule the next startup
         await self.schedule_next_startup()
@@ -359,7 +360,7 @@ class PowerManager(Application):
             return False
         return self.last_voltage < battery_low_alarm
 
-    async def on_shutdown_at(self, dt: datetime) -> None:
+    async def run_shutdown_hook(self, dt: datetime) -> None:
         self.about_to_shutdown = True
         await self.refresh_ui()
         await self.ui_manager.handle_comms_async(True)

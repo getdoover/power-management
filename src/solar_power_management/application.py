@@ -229,6 +229,9 @@ class PowerManager(Application):
         log.info("Sleeping for 20 seconds to allow shutdown hooks to run...")
         await asyncio.sleep(20)
 
+        ## Update the UI again
+        await self.refresh_ui()
+
         # for a maximum of 300 seconds (5min), check if shutdown is permitted
         for _ in range(60):
             if self.shutdown_permitted:
@@ -239,6 +242,9 @@ class PowerManager(Application):
                     "Shutdown not permitted. Waiting for 5 seconds before retrying..."
                 )
                 await asyncio.sleep(5)
+
+        ## Update the UI again
+        await self.refresh_ui()
 
         # either shutdown is permitted, or we've timed out. Either way, proceed to shutdown...
         shutdown_grace_period = 20
@@ -349,7 +355,6 @@ class PowerManager(Application):
         """Update the UI with the latest info"""
 
         immunity_time = await self.get_immunity_time()
-        is_immune = immunity_time and immunity_time > 60 or False
 
         ## Show a warning if the device is about to sleep, but clear it if its about to shutdown so the warning isn't left on while asleep
         sleep_warning_time = (
@@ -365,9 +370,19 @@ class PowerManager(Application):
             self.last_temp,
             not self.about_to_shutdown,
             self.is_battery_low,
-            is_immune,
+            immunity_time,
             sleep_warning_time,
         )
+
+    async def check_set_immunity(self):
+        """Check to see if the immunity mode Action has been triggered"""
+        if self.ui.enable_immunity.current_value is not True:
+            return
+
+        log.info("Immunity for 30 mins triggered")
+        log.error("TODO: SET IMMUNITY MODE NOT IMPLEMENTED YET")
+        # await self.platform_iface.set_immunity_seconds_async(30 * 60)
+        self.ui.enable_immunity.coerce(None) # Reset command
 
     @property
     def is_battery_low(self) -> bool:

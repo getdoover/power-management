@@ -344,6 +344,7 @@ class PowerManager(Application):
             await self.set_tag_async("low_battery_warning_sent", False)
 
         # Refresh the UI with the latest info
+        await self.check_set_immunity()
         await self.refresh_ui()
 
         if shutdown_requested:

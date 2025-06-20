@@ -88,7 +88,7 @@ class PowerManagerUI:
         self.is_online.update(is_online)
         self.low_batt_warning.hidden = not (voltage and is_battery_low)
         
-        if immunity_time:
+        if immunity_time and immunity_time > 45:
             self.is_immune_warning.hidden = False
             mins_awake = round(immunity_time / 60)
             immune_str = f"Device will stay awake for {mins_awake} mins"

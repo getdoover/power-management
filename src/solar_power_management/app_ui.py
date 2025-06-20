@@ -4,7 +4,10 @@ from pydoover import ui
 class PowerManagerUI:
     def __init__(self):
         self.connection_info = ui.ConnectionInfo(
-            "meter_connection_info", ui.ConnectionType.periodic
+            "connection_info", ui.ConnectionType.periodic
+        )
+        self.alert_stream = ui.AlertStream(
+            "significantEvents", "Notify me of any problems"
         )
 
         self.system_voltage = ui.NumericVariable(
@@ -53,6 +56,7 @@ class PowerManagerUI:
 
     def fetch(self):
         return (
+            self.alert_stream,
             self.connection_info,
             self.system_voltage,
             self.system_temperature,

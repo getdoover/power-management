@@ -69,7 +69,7 @@ class PowerManagerUI:
         self.system_voltage.update(voltage)
         self.system_temperature.update(temperature)
         self.is_online.update(is_online)
-        self.low_batt_warning.hidden = not is_battery_low
+        self.low_batt_warning.hidden = not (voltage and is_battery_low)
         self.is_immune_warning.hidden = not is_immune
 
         if sleep_warning_time:

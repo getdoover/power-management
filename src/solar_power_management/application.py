@@ -258,8 +258,9 @@ class PowerManager(Application):
 
         ## Put the system to sleep
         log.info(f"Scheduling shutdown to occur in {shutdown_grace_period} seconds...")
-        await asyncio.sleep(shutdown_grace_period)
+        await asyncio.sleep(shutdown_grace_period/2)
         await self.run_shutdown_hook(shutdown_at)
+        await asyncio.sleep(shutdown_grace_period/2)
 
         log.info("Scheduling a hard shutdown in 60 seconds time as a safety net")
         await self.platform_iface.schedule_shutdown_async(60)
@@ -397,7 +398,6 @@ class PowerManager(Application):
         await self.refresh_ui()
         await self.ui_manager.handle_comms_async(True)
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
-        await asyncio.sleep(3) # Allow time for the UI to update before shutdown
 
 
 if __name__ == "__main__":

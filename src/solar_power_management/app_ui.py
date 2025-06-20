@@ -64,7 +64,13 @@ class PowerManagerUI:
         )
 
     def update(
-        self, voltage: float, temperature: float, is_online: bool, is_battery_low: bool, is_immune: bool, sleep_warning_time: bool = False
+        self,
+        voltage: float,
+        temperature: float,
+        is_online: bool,
+        is_battery_low: bool,
+        is_immune: bool,
+        sleep_warning_time: int | None,
     ):
         self.system_voltage.update(voltage)
         self.system_temperature.update(temperature)
@@ -74,7 +80,9 @@ class PowerManagerUI:
 
         if sleep_warning_time:
             self.about_to_sleep_warning.hidden = False
-            self.about_to_sleep_warning.display_name = f"Device will sleep in {sleep_warning_time} seconds"
+            self.about_to_sleep_warning.display_name = (
+                f"Device will sleep in {sleep_warning_time} seconds"
+            )
         else:
             self.about_to_sleep_warning.hidden = True
 

@@ -487,10 +487,14 @@ wheels = [
 
 [[package]]
 name = "pydoover"
-version = "0.4.5"
-source = { git = "https://github.com/getdoover/pydoover#8756806474b4f95e2ba0f0f559c3dd24d5ed1600" }
+version = "0.4.7"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/1b/d840f929fc407365555f66160b039f2ffb37609ebf24020a3ab0a36e626f/pydoover-0.4.7.tar.gz", hash = "sha256:947afd775971dda62ab5333b3051490162c7c922429f5e39a58597944b4c5702", size = 160829, upload-time = "2025-06-26T23:34:03.789Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/06/a247f1292ab6094361f64964826909210867e767d252a47e2abb1e70e336/pydoover-0.4.7-py3-none-any.whl", hash = "sha256:957f5820cbcc9b801307af38916e41680db92a2ed3f1e0273d1fd7e426e59b24", size = 141371, upload-time = "2025-06-26T23:34:01.528Z" },
 ]
 
 [[package]]
@@ -574,7 +578,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydoover", git = "https://github.com/getdoover/pydoover" }]
+requires-dist = [{ name = "pydoover", specifier = ">=0.4.7" }]
 
 [package.metadata.requires-dev]
 dev = [

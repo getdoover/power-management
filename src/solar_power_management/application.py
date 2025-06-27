@@ -382,8 +382,7 @@ class PowerManager(Application):
             return
 
         log.info("Immunity for 30 mins triggered")
-        log.error("TODO: SET IMMUNITY MODE NOT IMPLEMENTED YET")
-        # await self.platform_iface.set_immunity_seconds_async(30 * 60)
+        await self.platform_iface.set_immunity_seconds_async(30 * 60)
         self.ui.enable_immunity.coerce(None) # Reset command
 
     @property

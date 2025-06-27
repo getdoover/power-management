@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydoover>=0.4.4",
+    "pydoover>=0.4.7",
 ]
 
 [project.scripts]
@@ -25,6 +25,3 @@ dev = [
     "pytest-asyncio>=0.26.0",
     "requests>=2.32.3",
 ]
-
-[tool.uv.sources]
-pydoover = { git = "https://github.com/getdoover/pydoover" }

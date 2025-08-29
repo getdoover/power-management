@@ -37,6 +37,7 @@ class PowerManager(Application):
         self.about_to_shutdown = False
 
         self.ui = PowerManagerUI()
+        self.set_ui_status_icon("connected")
 
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
@@ -395,6 +396,7 @@ class PowerManager(Application):
     async def run_shutdown_hook(self, dt: datetime) -> None:
         self.about_to_shutdown = True
         await self.refresh_ui()
+        self.set_ui_status_icon("idle")
         await self.ui_manager.handle_comms_async(True)
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 

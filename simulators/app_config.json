@@ -1,3 +1,5 @@
 {
-
+    "sleep_time_thresholds": [],
+    "min_awake_time_thresholds": [],
+    "override_shutdown_permission_in_minutes": 360
 }

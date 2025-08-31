@@ -14,3 +14,7 @@ services:
     build: ../
     restart: unless-stopped
     network_mode: host
+    environment:
+      - APP_KEY=test_solar_power_management
+      - CONFIG_FP=/app/simulators/app_config.json
+

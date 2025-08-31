@@ -56,7 +56,7 @@
                                 "maximum": 3600
                             }
                         },
-                        "additionalElements": false,
+                        "additionalElements": true,
                         "required": []
                     }
                 },
@@ -90,7 +90,7 @@
                                 "maximum": 3600
                             }
                         },
-                        "additionalElements": false,
+                        "additionalElements": true,
                         "required": []
                     }
                 },

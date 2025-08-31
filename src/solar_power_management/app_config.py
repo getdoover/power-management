@@ -83,9 +83,12 @@ class PowerManagerConfig(config.Schema):
             for threshold in elems
         ]
 
+def export():
+    PowerManagerConfig().export(Path(__file__).parent.parent.parent / "doover_config.json", "solar_power_management")
 
-if __name__ == "__main__":
-    c = PowerManagerConfig()
-    PowerManagerConfig().export(
-        Path(__file__).parents[2] / "doover_config.json", "solar_power_management"
-    )
+
+# if __name__ == "__main__":
+#     c = PowerManagerConfig()
+#     PowerManagerConfig().export(
+#         Path(__file__).parents[2] / "doover_config.json", "solar_power_management"
+#     )

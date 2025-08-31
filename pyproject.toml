@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 doover-app-run = "solar_power_management:main"
+export-config = "solar_power_management.app_config:export"
 
 [build-system]
 requires = ["hatchling"]

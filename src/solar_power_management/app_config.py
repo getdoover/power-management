@@ -1,27 +1,20 @@
 from pathlib import Path
+from enum import Enum
 
 from pydoover import config
 
-class Profile:
+class Profile(Enum):
     CUSTOM = "Custom"
-
     MONITOR_12V = "Monitor (12V)"
     MAX_ON_12V = "Max On (12V)"
     REGULAR_12V = "Regular (12V)"
-
     MONITOR_24V = "Monitor (24V)"
     MAX_ON_24V = "Max On (24V)"
     REGULAR_24V = "Regular (24V)"
 
-    choices = [
-        MONITOR_12V,
-        MAX_ON_12V,
-        REGULAR_12V,
-        MONITOR_24V,
-        MAX_ON_24V,
-        REGULAR_24V,
-        CUSTOM,
-    ]
+    @classmethod
+    def choices(cls):
+        return [choice.value for choice in cls]
 
 class SleepTimeThresholds(config.Object):
     def __init__(self):
@@ -46,7 +39,7 @@ class AwakeTimeThresholds(config.Object):
             "Awake Time (seconds)", default=90, minimum=0, maximum=3600
         )
 
-class Profile:
+class ProfileConfig:
     def __init__(self, sleep_thresholds: list[SleepTimeThresholds], min_awake_thresholds: list[AwakeTimeThresholds]):
         self.sleep_thresholds = sleep_thresholds
         self.min_awake_thresholds = min_awake_thresholds
@@ -54,16 +47,16 @@ class Profile:
 
 profiles = {
     ## Sleep only at a voltage so low that its effectively just monitoring and never shutdown
-    Profile.MONITOR_12V: Profile(
+    Profile.MONITOR_12V: ProfileConfig(
         sleep_thresholds=[SleepTimeThresholds(voltage_threshold=6.5, sleep_time=5),],
         min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=6.5, awake_time=180)],
     ),
     ## Only sleeps at very low voltages to prevent going flat in emergencies
-    Profile.MAX_ON_12V: Profile(
+    Profile.MAX_ON_12V: ProfileConfig(
         sleep_thresholds=[SleepTimeThresholds(voltage_threshold=10.5, sleep_time=60),],
         min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=10.5, awake_time=180)],
     ),
-    Profile.REGULAR_12V: Profile(
+    Profile.REGULAR_12V: ProfileConfig(
         sleep_thresholds=[
             SleepTimeThresholds(voltage_threshold=13.2, sleep_time=25),
             SleepTimeThresholds(voltage_threshold=12.9, sleep_time=60),
@@ -75,15 +68,15 @@ profiles = {
             AwakeTimeThresholds(voltage_threshold=12.6, awake_time=90),
         ],
     ),
-    Profile.MONITOR_24V: Profile(
+    Profile.MONITOR_24V: ProfileConfig(
         sleep_thresholds=[SleepTimeThresholds(voltage_threshold=6.5, sleep_time=5),],
         min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=6.5, awake_time=180)],
     ),
-    Profile.MAX_ON_24V: Profile(
+    Profile.MAX_ON_24V: ProfileConfig(
         sleep_thresholds=[SleepTimeThresholds(voltage_threshold=22.0, sleep_time=60),],
         min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=22.0, awake_time=180)],
     ),
-    Profile.REGULAR_24V: Profile(
+    Profile.REGULAR_24V: ProfileConfig(
         sleep_thresholds=[
             SleepTimeThresholds(voltage_threshold=26.0, sleep_time=25),
             SleepTimeThresholds(voltage_threshold=25.0, sleep_time=60),
@@ -114,8 +107,8 @@ class PowerManagerConfig(config.Schema):
         self.profile = config.Enum(
             "Profile",
             description="The Profile to use for the power management.",
-            default=Profile.REGULAR_12V,
-            choices=Profile.choices,
+            default=Profile.REGULAR_12V.value,
+            choices=Profile.choices(),
         )
 
         self.sleep_time_thresholds = config.Array(
@@ -155,14 +148,14 @@ class PowerManagerConfig(config.Schema):
 
     @property
     def is_24v(self) -> bool:
-        return self.profile.value in [Profile.MONITOR_24V, Profile.MAX_ON_24V, Profile.REGULAR_24V]
+        return self.profile.value in [Profile.MONITOR_24V.value, Profile.MAX_ON_24V.value, Profile.REGULAR_24V.value]
 
     @property
     def sleep_time_threshold_lookup(self) -> list[tuple[float, int]]:
-        if self.profile.value == Profile.CUSTOM:
+        if self.profile.value == Profile.CUSTOM.value:
             sleep_thresholds = self.sleep_time_thresholds.elements
         else:
-            sleep_thresholds = profiles[self.profile.value].sleep_thresholds
+            sleep_thresholds = profiles[Profile(self.profile.value)].sleep_thresholds
 
         return [
             (threshold.voltage_threshold.value, threshold.sleep_time.value)
@@ -171,10 +164,10 @@ class PowerManagerConfig(config.Schema):
 
     @property
     def min_awake_time_threshold_lookup(self) -> list[tuple[float, int]]:
-        if self.profile.value == Profile.CUSTOM:
+        if self.profile.value == Profile.CUSTOM.value:
             min_awake_thresholds = self.min_awake_time_thresholds.elements
         else:
-            min_awake_thresholds = profiles[self.profile.value].min_awake_thresholds
+            min_awake_thresholds = profiles[Profile(self.profile.value)].min_awake_thresholds
 
         return [
             (threshold.voltage_threshold.value, threshold.awake_time.value)

@@ -7,7 +7,7 @@ using Bluetooth Low Energy communication.
 
 import asyncio
 import logging
-from typing import Dict, Optional, Any, Callable
+from typing import Dict, Any, Callable
 from dataclasses import dataclass
 import time
 import traceback
@@ -18,7 +18,7 @@ try:
     # from victron_ble import VictronBLEDevice
     from bleak import BLEDevice
     from victron_ble.scanner import Scanner
-    from victron_ble.devices import Device, DeviceData, detect_device_type
+    from victron_ble.devices import detect_device_type
     from victron_ble.exceptions import AdvertisementKeyMissingError, UnknownDeviceError
 
 except ImportError:

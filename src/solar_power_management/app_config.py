@@ -45,49 +45,42 @@ class ProfileConfig:
         self.min_awake_thresholds = min_awake_thresholds
 
 
+## A dictionary of dictionaries, with the inner dictionary's being the associated sleep_thresholds, and wake  and their associated sleep and awake thresholds (as tuples of voltage and time)
 profiles = {
+
+    ## 12V Profiles
     ## Sleep only at a voltage so low that its effectively just monitoring and never shutdown
-    Profile.MONITOR_12V: ProfileConfig(
-        sleep_thresholds=[SleepTimeThresholds(voltage_threshold=6.5, sleep_time=5),],
-        min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=6.5, awake_time=180)],
-    ),
+    Profile.MONITOR_12V: {
+        "sleep_thresholds": [{6.5: 5}],
+        "min_awake_thresholds": [{6.5: 180}],
+    },
     ## Only sleeps at very low voltages to prevent going flat in emergencies
-    Profile.MAX_ON_12V: ProfileConfig(
-        sleep_thresholds=[SleepTimeThresholds(voltage_threshold=10.5, sleep_time=60),],
-        min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=10.5, awake_time=180)],
-    ),
-    Profile.REGULAR_12V: ProfileConfig(
-        sleep_thresholds=[
-            SleepTimeThresholds(voltage_threshold=13.2, sleep_time=25),
-            SleepTimeThresholds(voltage_threshold=12.9, sleep_time=60),
-            SleepTimeThresholds(voltage_threshold=12.6, sleep_time=240),
-        ],
-        min_awake_thresholds=[
-            AwakeTimeThresholds(voltage_threshold=13.2, awake_time=240),
-            AwakeTimeThresholds(voltage_threshold=12.9, awake_time=120),
-            AwakeTimeThresholds(voltage_threshold=12.6, awake_time=90),
-        ],
-    ),
-    Profile.MONITOR_24V: ProfileConfig(
-        sleep_thresholds=[SleepTimeThresholds(voltage_threshold=6.5, sleep_time=5),],
-        min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=6.5, awake_time=180)],
-    ),
-    Profile.MAX_ON_24V: ProfileConfig(
-        sleep_thresholds=[SleepTimeThresholds(voltage_threshold=22.0, sleep_time=60),],
-        min_awake_thresholds=[AwakeTimeThresholds(voltage_threshold=22.0, awake_time=180)],
-    ),
-    Profile.REGULAR_24V: ProfileConfig(
-        sleep_thresholds=[
-            SleepTimeThresholds(voltage_threshold=26.0, sleep_time=25),
-            SleepTimeThresholds(voltage_threshold=25.0, sleep_time=60),
-            SleepTimeThresholds(voltage_threshold=24.0, sleep_time=240),
-        ],
-        min_awake_thresholds=[
-            AwakeTimeThresholds(voltage_threshold=26.0, awake_time=240),
-            AwakeTimeThresholds(voltage_threshold=25.0, awake_time=120),
-            AwakeTimeThresholds(voltage_threshold=24.0, awake_time=90),
-        ],
-    ),
+    Profile.MAX_ON_12V: {
+        "sleep_thresholds": [{10.5: 60}],
+        "min_awake_thresholds": [{10.5: 180}],
+    },
+    ## Maintian a high battery level, but stay on indefinitely while charging
+    Profile.REGULAR_12V: {
+        "sleep_thresholds": [{13.2: 25}, {12.9: 60}, {12.6: 240}],
+        "min_awake_thresholds": [{13.2: 240}, {12.9: 120}, {12.6: 90}],
+    },
+
+    ## 24V Profiles
+    ## Sleep only at a voltage so low that its effectively just monitoring and never shutdown
+    Profile.MONITOR_24V: {
+        "sleep_thresholds": [{6.5: 5}],
+        "min_awake_thresholds": [{6.5: 180}],
+    },
+    ## Only sleeps at very low voltages to prevent going flat in emergencies
+    Profile.MAX_ON_24V: {
+        "sleep_thresholds": [{22.0: 60}],
+        "min_awake_thresholds": [{22.0: 180}],
+    },
+    ## Maintian a high battery level, but stay on indefinitely while charging
+    Profile.REGULAR_24V: {
+        "sleep_thresholds": [{26.0: 25}, {25.0: 60}, {24.0: 240}],
+        "min_awake_thresholds": [{26.0: 240}, {25.0: 120}, {24.0: 90}],
+    },
 }
 
 class VictronConfig(config.Object):
@@ -151,27 +144,29 @@ class PowerManagerConfig(config.Schema):
         return self.profile.value in [Profile.MONITOR_24V.value, Profile.MAX_ON_24V.value, Profile.REGULAR_24V.value]
 
     @property
+    ## A list of tuples of voltage and sleep time
     def sleep_time_threshold_lookup(self) -> list[tuple[float, int]]:
         if self.profile.value == Profile.CUSTOM.value:
             sleep_thresholds = self.sleep_time_thresholds.elements
         else:
-            sleep_thresholds = profiles[Profile(self.profile.value)].sleep_thresholds
+            sleep_thresholds = profiles[Profile(self.profile.value)]["sleep_thresholds"]
 
         return [
-            (threshold.voltage_threshold.value, threshold.sleep_time.value)
-            for threshold in sleep_thresholds
+            (k, v)
+            for k,v in sleep_thresholds.items()
         ]
 
     @property
+    ## A list of tuples of voltage and awake time
     def min_awake_time_threshold_lookup(self) -> list[tuple[float, int]]:
         if self.profile.value == Profile.CUSTOM.value:
             min_awake_thresholds = self.min_awake_time_thresholds.elements
         else:
-            min_awake_thresholds = profiles[Profile(self.profile.value)].min_awake_thresholds
+            min_awake_thresholds = profiles[Profile(self.profile.value)]["min_awake_thresholds"]
 
         return [
-            (threshold.voltage_threshold.value, threshold.awake_time.value)
-            for threshold in min_awake_thresholds
+            (k, v)
+            for k,v in min_awake_thresholds.items()
         ]
 
 def export():

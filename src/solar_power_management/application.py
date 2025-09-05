@@ -6,6 +6,7 @@ from datetime import timedelta, datetime
 from pydoover.docker import Application, run_app
 from pydoover.utils import apply_async_kalman_filter
 
+from .victron import VictronDevice
 from .app_config import PowerManagerConfig
 from .app_ui import PowerManagerUI
 
@@ -36,8 +37,7 @@ class PowerManager(Application):
 
         self.about_to_shutdown = False
 
-        self.ui = PowerManagerUI()
-        self.set_ui_status_icon("connected")
+        self.victron_devices = []
 
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
@@ -300,6 +300,12 @@ class PowerManager(Application):
     async def setup(self):
         log.info("Setting up PowerManager...")
         await self.maybe_reset_soft_watchdog()
+
+        for victron_config in self.config.victron_configs.elements:
+            self.victron_devices.append(VictronDevice(victron_config.device_address, victron_config.device_key))
+
+        self.ui = PowerManagerUI(self)
+        self.set_ui_status_icon("connected")
 
         self.ui_manager.add_children(*self.ui.fetch())
         self.ui_manager.set_display_name("Power & Battery")

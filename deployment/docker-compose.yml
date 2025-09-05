@@ -1,0 +1,14 @@
+services:
+  power-management:
+    image: ghcr.io/getdoover/power-management:main
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - APP_KEY=$APP_KEY
+      - HEALTHCHECK_PORT=$HEALTHCHECK_PORT
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+    volumes:
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+      - /etc/machine-id:/etc/machine-id:ro  # helps D-Bus identify the machine
+    cap_add:
+      - NET_ADMIN # not strictly required for D-Bus control, but handy for checks

@@ -149,7 +149,7 @@ class PowerManagerConfig(config.Schema):
         if self.profile.value == Profile.CUSTOM.value:
             sleep_thresholds = self.sleep_time_thresholds.elements
         else:
-            sleep_thresholds = profiles[Profile(self.profile.value)]["sleep_thresholds"]
+            sleep_thresholds = profiles[self.profile.value]["sleep_thresholds"]
 
         return [
             (k, v)
@@ -162,7 +162,7 @@ class PowerManagerConfig(config.Schema):
         if self.profile.value == Profile.CUSTOM.value:
             min_awake_thresholds = self.min_awake_time_thresholds.elements
         else:
-            min_awake_thresholds = profiles[Profile(self.profile.value)]["min_awake_thresholds"]
+            min_awake_thresholds = profiles[self.profile.value]["min_awake_thresholds"]
 
         return [
             (k, v)

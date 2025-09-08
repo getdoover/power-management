@@ -1,4 +1,7 @@
 {
+    "profile": "Regular (12V)",
+    "victron_configs": [],
+    "position": 120,
     "sleep_time_thresholds": [],
     "min_awake_time_thresholds": [],
     "override_shutdown_permission_in_minutes": 360

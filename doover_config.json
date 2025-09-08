@@ -26,11 +26,29 @@
             "title": "Application Config",
             "type": "object",
             "properties": {
+                "profile": {
+                    "enum": [
+                        "Custom",
+                        "Monitor (12V)",
+                        "Max On (12V)",
+                        "Regular (12V)",
+                        "Monitor (24V)",
+                        "Max On (24V)",
+                        "Regular (24V)"
+                    ],
+                    "title": "Profile",
+                    "x-name": "profile",
+                    "x-hidden": false,
+                    "type": "string",
+                    "description": "The Profile to use for the power management.",
+                    "default": "Regular (12V)"
+                },
                 "sleep_time_thresholds": {
                     "title": "Sleep Time Thresholds",
                     "x-name": "sleep_time_thresholds",
-                    "x-hidden": true,
+                    "x-hidden": false,
                     "type": "array",
+                    "description": "Only used if the profile is 'Custom'. Custom thresholds for sleep times",
                     "items": {
                         "title": "Sleep Time Thresholds",
                         "x-name": "sleep_time_thresholds",
@@ -63,8 +81,9 @@
                 "min_awake_time_thresholds": {
                     "title": "Min Awake Time Thresholds",
                     "x-name": "min_awake_time_thresholds",
-                    "x-hidden": true,
+                    "x-hidden": false,
                     "type": "array",
+                    "description": "Only used if the profile is 'Custom'. Custom thresholds for minimum awake times",
                     "items": {
                         "title": "Awake Time Thresholds",
                         "x-name": "awake_time_thresholds",
@@ -103,6 +122,39 @@
                     "minimum": 10,
                     "maximum": 1440
                 },
+                "victron_configs": {
+                    "title": "Victron Configs",
+                    "x-name": "victron_configs",
+                    "x-hidden": false,
+                    "type": "array",
+                    "description": "The Victron devices to bluetooth to.",
+                    "items": {
+                        "title": "Victron Bluetooth Config",
+                        "x-name": "victron_bluetooth_config",
+                        "x-hidden": false,
+                        "type": "object",
+                        "properties": {
+                            "device_address": {
+                                "title": "Device Address",
+                                "x-name": "device_address",
+                                "x-hidden": false,
+                                "type": "string",
+                                "description": "The address of the Victron device to bluetooth to.",
+                                "default": null
+                            },
+                            "device_key": {
+                                "title": "Device Key",
+                                "x-name": "device_key",
+                                "x-hidden": false,
+                                "type": "string",
+                                "description": "The key of the Victron device to bluetooth to.",
+                                "default": null
+                            }
+                        },
+                        "additionalElements": true,
+                        "required": []
+                    }
+                },
                 "position": {
                     "title": "Position",
                     "x-name": "position",
@@ -117,7 +169,8 @@
             "additionalElements": true,
             "required": [
                 "sleep_time_thresholds",
-                "min_awake_time_thresholds"
+                "min_awake_time_thresholds",
+                "victron_configs"
             ]
         }
     }

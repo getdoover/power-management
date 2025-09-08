@@ -50,36 +50,36 @@ profiles = {
 
     ## 12V Profiles
     ## Sleep only at a voltage so low that its effectively just monitoring and never shutdown
-    Profile.MONITOR_12V: {
-        "sleep_thresholds": [{6.5: 5}],
-        "min_awake_thresholds": [{6.5: 180}],
+    Profile.MONITOR_12V.value: {
+        "sleep_thresholds": {6.5: 5},
+        "min_awake_thresholds": {6.5: 180},
     },
     ## Only sleeps at very low voltages to prevent going flat in emergencies
-    Profile.MAX_ON_12V: {
-        "sleep_thresholds": [{10.5: 60}],
-        "min_awake_thresholds": [{10.5: 180}],
+    Profile.MAX_ON_12V.value: {
+        "sleep_thresholds": {10.5: 60},
+        "min_awake_thresholds": {10.5: 180},
     },
     ## Maintian a high battery level, but stay on indefinitely while charging
-    Profile.REGULAR_12V: {
-        "sleep_thresholds": [{13.2: 25}, {12.9: 60}, {12.6: 240}],
-        "min_awake_thresholds": [{13.2: 240}, {12.9: 120}, {12.6: 90}],
+    Profile.REGULAR_12V.value: {
+        "sleep_thresholds": {13.2: 25, 12.9: 60, 12.6: 240},
+        "min_awake_thresholds": {13.2: 240, 12.9: 120, 12.6: 90},
     },
 
     ## 24V Profiles
     ## Sleep only at a voltage so low that its effectively just monitoring and never shutdown
-    Profile.MONITOR_24V: {
-        "sleep_thresholds": [{6.5: 5}],
-        "min_awake_thresholds": [{6.5: 180}],
+    Profile.MONITOR_24V.value: {
+        "sleep_thresholds": {6.5: 5},
+        "min_awake_thresholds": {6.5: 180},
     },
     ## Only sleeps at very low voltages to prevent going flat in emergencies
-    Profile.MAX_ON_24V: {
-        "sleep_thresholds": [{22.0: 60}],
-        "min_awake_thresholds": [{22.0: 180}],
+    Profile.MAX_ON_24V.value: {
+        "sleep_thresholds": {22.0: 60},
+        "min_awake_thresholds": {22.0: 180},
     },
     ## Maintian a high battery level, but stay on indefinitely while charging
-    Profile.REGULAR_24V: {
-        "sleep_thresholds": [{26.0: 25}, {25.0: 60}, {24.0: 240}],
-        "min_awake_thresholds": [{26.0: 240}, {25.0: 120}, {24.0: 90}],
+    Profile.REGULAR_24V.value: {
+        "sleep_thresholds": {26.0: 25, 25.0: 60, 24.0: 240},
+        "min_awake_thresholds": {26.0: 240, 25.0: 120, 24.0: 90},
     },
 }
 
@@ -148,26 +148,32 @@ class PowerManagerConfig(config.Schema):
     def sleep_time_threshold_lookup(self) -> list[tuple[float, int]]:
         if self.profile.value == Profile.CUSTOM.value:
             sleep_thresholds = self.sleep_time_thresholds.elements
+            return [
+                (threshold.voltage_threshold.value, threshold.sleep_time.value)
+                for threshold in sleep_thresholds
+            ]
         else:
             sleep_thresholds = profiles[self.profile.value]["sleep_thresholds"]
-
-        return [
-            (k, v)
-            for k,v in sleep_thresholds.items()
-        ]
+            return [
+                (k, v)
+                for k, v in sleep_thresholds.items()
+            ]
 
     @property
     ## A list of tuples of voltage and awake time
     def min_awake_time_threshold_lookup(self) -> list[tuple[float, int]]:
         if self.profile.value == Profile.CUSTOM.value:
             min_awake_thresholds = self.min_awake_time_thresholds.elements
+            return [
+                (threshold.voltage_threshold.value, threshold.awake_time.value)
+                for threshold in min_awake_thresholds
+            ]
         else:
             min_awake_thresholds = profiles[self.profile.value]["min_awake_thresholds"]
-
-        return [
-            (k, v)
-            for k,v in min_awake_thresholds.items()
-        ]
+            return [
+                (k, v)
+                for k, v in min_awake_thresholds.items()
+            ]
 
 def export():
     PowerManagerConfig().export(Path(__file__).parent.parent.parent / "doover_config.json", "solar_power_management")

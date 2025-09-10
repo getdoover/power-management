@@ -1,20 +1,20 @@
 services:
-  device_agent:
-    image: spaneng/doover_device_agent:apps
-    network_mode: host
-    volumes:
-      - ./dda_config.json:/var/lib/dds/agent/config.json
+  # device_agent:
+  #   image: spaneng/doover_device_agent:apps
+  #   network_mode: host
+  #   volumes:
+  #     - ./dda_config.json:/var/lib/dds/agent/config.json
 
-  platform_iface:
-    image: spaneng/doover_platform_iface:sim
-    network_mode: host
-    entrypoint: python3 -u platform_iface.py --type=sim
+  # platform_iface:
+  #   image: spaneng/doover_platform_iface:sim
+  #   network_mode: host
+  #   entrypoint: python3 -u platform_iface.py --type=sim
 
   power-management:
     build: ../
     restart: unless-stopped
     network_mode: host
     environment:
-      - APP_KEY=test_solar_power_management
-      - CONFIG_FP=/app/simulators/app_config.json
+      - APP_KEY=solar_power_management-1
+      # - CONFIG_FP=/app/simulators/app_config.json
 

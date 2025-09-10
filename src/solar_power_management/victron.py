@@ -61,7 +61,10 @@ class VictronDeviceData:
     
     @property
     def state(self):
-        return self.charger_state
+        result = self.charger_state
+        if result is None:
+            result = self.charge_state
+        return result
     
     @property
     def error(self):
@@ -77,6 +80,8 @@ class VictronDeviceData:
             return current_1
         elif current_2 is not None:
             return current_2
+        elif self.battery_charging_current is not None:
+            return self.battery_charging_current
         return None
 
     @property
@@ -90,6 +95,8 @@ class VictronDeviceData:
             return voltage_1
         elif voltage_2 is not None:
             return voltage_2
+        elif self.battery_voltage is not None:
+            return self.battery_voltage
         return None
 
     @property
@@ -113,8 +120,8 @@ class VictronDeviceData:
         print(f"State: {self.state}")
         print(f"Error: {self.error}")
         print(f"Model Name: {self.model_name}")
-        print(f"Output Current 1: {self.output_current1}")
-        print(f"Output Voltage 1: {self.output_voltage1}")
+        print(f"Output Current 1: {self.output_current}")
+        print(f"Output Voltage 1: {self.output_voltage}")
 
 
 class VictronScanner(Scanner):
@@ -312,10 +319,16 @@ if __name__ == "__main__":
     
     async def main():
         # Example device from your output
+
+        ## Shed Battery Charger
         # device_address = "CB:CF:B2:57:19:DA"
         device_address = "46A887B1-2D57-3A13-77DF-691493C18A82" ## It seems mac wants a different address
         device_key = "ae6adb08be413881a9dd4f0a5aa410de"
         
+        ## Test Smart Solar Charger
+        device_address = "20CF582C-3130-6A4B-F08C-F49A63F76250"
+        device_key = "17a91f990954a3cb13f4deb059d70b00"
+
         # Create device instance
         device = VictronDevice(device_address, device_key)
         

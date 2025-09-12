@@ -88,10 +88,10 @@ class VictronConfig(config.Object):
         super().__init__("Victron Bluetooth Config")
 
         self.device_address = config.String(
-            "Device Address", default=None, description="The address of the Victron device to bluetooth to."
+            "Device Address", default=None, description="The MAC address of the Victron device to bluetooth to. (The short one)"
         )
         self.device_key = config.String(
-            "Device Key", default=None, description="The key of the Victron device to bluetooth to."
+            "Device Key", default=None, description="The Key of the Victron device to bluetooth to. (The long one)"
         )
 
 class PowerManagerConfig(config.Schema):

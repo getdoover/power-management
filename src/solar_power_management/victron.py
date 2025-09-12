@@ -329,6 +329,9 @@ if __name__ == "__main__":
         device_address = "20CF582C-3130-6A4B-F08C-F49A63F76250"
         device_key = "17a91f990954a3cb13f4deb059d70b00"
 
+        device_address = "c551ac9f555d"
+        device_key = "a7793eb2ed66f21a3ead17d2a6798a84"
+
         # Create device instance
         device = VictronDevice(device_address, device_key)
         

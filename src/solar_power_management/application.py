@@ -303,6 +303,8 @@ class PowerManager(Application):
 
         for victron_config in self.config.victron_configs.elements:
             self.victron_devices.append(VictronDevice(victron_config.device_address.value, victron_config.device_key.value))
+            await self.victron_devices[-1].start()
+        log.info(f"Found {len(self.victron_devices)} Victron devices.")
 
         self.ui = PowerManagerUI(self)
         self.set_ui_status_icon("connected")

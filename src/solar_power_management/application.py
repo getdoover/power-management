@@ -307,7 +307,7 @@ class PowerManager(Application):
         log.info(f"Found {len(self.victron_devices)} Victron devices.")
 
         self.ui = PowerManagerUI(self)
-        self.set_ui_status_icon("connected")
+        # self.set_ui_status_icon(None)
 
         self.ui_manager.add_children(*self.ui.fetch())
         self.ui_manager.set_display_name("Power & Battery")
@@ -404,7 +404,7 @@ class PowerManager(Application):
     async def run_shutdown_hook(self, dt: datetime) -> None:
         self.about_to_shutdown = True
         await self.refresh_ui()
-        self.set_ui_status_icon("idle")
+        # self.set_ui_status_icon("idle")
         await self.ui_manager.handle_comms_async(True)
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 

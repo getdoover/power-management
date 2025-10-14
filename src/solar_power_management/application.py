@@ -111,7 +111,12 @@ class PowerManager(Application):
         if self.scheduled_goto_sleep_time is not None:
             if self.time_until_sleep is not None:
                 log.warning(f"Time till sleep: {self.time_until_sleep}")
+
+            ## Already scheduled to sleep, so just return.
             return
+
+        ## Do a preliminary update of the UI to show the sleep time and time till sleep. However this will be revised later when the actual sleep time is known.
+        self.ui.update_connection_info(sleep_time, time_till_sleep + sleep_time)
 
         if self.awake_time < (self.get_min_awake_time() - time_till_sleep):
             time_till_sleep = self.get_min_awake_time() - self.awake_time

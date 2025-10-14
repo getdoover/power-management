@@ -406,6 +406,7 @@ class PowerManager(Application):
         await self.refresh_ui()
         # self.set_ui_status_icon("idle")
         await self.ui_manager.handle_comms_async(True)
+        await asyncio.sleep(3) # Wait for the UI to be fully updated, push through any pending UI updates, etc
         log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
 
 

@@ -267,7 +267,7 @@ class VictronDevice:
             await scanner.start()
         except Exception as e:
             self.logger.error(f"Error starting scanner: {e}")
-            raise
+            # raise
     
     async def stop(self):
         """

@@ -144,8 +144,9 @@ class PowerManagerUI:
         if sleep_warning_time:
             self.about_to_sleep_warning.hidden = False
             sleep_str = f"Device will sleep in {sleep_warning_time} seconds"
-            if sleep_warning_time < 30:
+            if sleep_warning_time < 45:
                 sleep_str = "Device about to sleep"
+                self.about_to_sleep_warning.hidden = True ## Hide in the last 45 seconds, so it doesn't persist while asleep
             self.about_to_sleep_warning.display_name = (sleep_str)
         else:
             self.about_to_sleep_warning.hidden = True

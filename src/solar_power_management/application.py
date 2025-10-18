@@ -376,7 +376,7 @@ class PowerManager(Application):
         sleep_warning_time = (
             self.time_until_sleep
             if self.time_until_sleep
-            and self.time_until_sleep < 60
+            and self.time_until_sleep < 90
             and not self.about_to_shutdown
             else None
         )

@@ -118,7 +118,7 @@
                     "x-name": "override_shutdown_permission_in_minutes",
                     "x-hidden": false,
                     "type": "integer",
-                    "default": 360,
+                    "default": 60,
                     "minimum": 10,
                     "maximum": 1440
                 },
@@ -139,7 +139,7 @@
                                 "x-name": "device_address",
                                 "x-hidden": false,
                                 "type": "string",
-                                "description": "The address of the Victron device to bluetooth to.",
+                                "description": "The MAC address of the Victron device to bluetooth to. (The short one)",
                                 "default": null
                             },
                             "device_key": {
@@ -147,7 +147,7 @@
                                 "x-name": "device_key",
                                 "x-hidden": false,
                                 "type": "string",
-                                "description": "The key of the Victron device to bluetooth to.",
+                                "description": "The Key of the Victron device to bluetooth to. (The long one)",
                                 "default": null
                             }
                         },

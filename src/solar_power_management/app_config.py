@@ -116,7 +116,7 @@ class PowerManagerConfig(config.Schema):
         )
         self.override_shutdown_permission_mins = config.Integer(
             "Override Shutdown Permission in Minutes",
-            default=6 * 60,
+            default=60,
             minimum=10,
             maximum=1440,
         )

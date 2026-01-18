@@ -1,26 +1,68 @@
-# Application Template
+# Solar Power Management
 
-This repository is a template for creating a new application. This example currently only showcases a Docker application.
-Future work will include other examples, including an MQTT device, an HTTP integration, slack integration and others.
+<!-- ![Doover Logo](https://doover.com/wp-content/uploads/Doover-Logo-Landscape-Navy-padded-small.png) -->
+<img src="https://doover.com/wp-content/uploads/Doover-Logo-Landscape-Navy-padded-small.png" alt="App Icon" style="max-width: 300px;">
 
-The basic structure of the repository is as follows:
+**Manage device power and shutdown procedures on power-limited devices, especially in solar contexts with Victron integration.**
 
-```
-doover_config.json  <-- Configuration file for the application
-application/        <-- Application directory
-  Dockerfile        <-- Dockerfile for the application
-  Pipfile           <-- Python requirements file
-  Pipfile.lock      <-- Python requirements lock file
-  application.py    <-- Main application code
-  app_config.py     <-- Config schema definition
-  app_config.json   <-- Config schema export
-```
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/getdoover/power-management)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/getdoover/power-management/blob/main/LICENSE)
 
-The `doover_config.json` file is the doover configuration file for the application. 
-It defines where the Doover site should find the application code. In our case, this is a fairly straightforward 
-```json
-{
-    "deployment_package_dir": "application/"
-}
-```
+[Configuration](#configuration) | [Developer](https://github.com/getdoover/power-management/blob/main/DEVELOPMENT.md) | [Need Help?](#need-help)
 
+<br/>
+
+## Overview
+
+Manage device power and shutdown procedures on power-limited devices, especially in solar contexts with Victron integration.
+
+<br/>
+
+## Configuration
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Profile** | Power management profile | `Regular (12V)` |
+| **Sleep Time Thresholds** | Sleep times based on voltage | `Required` |
+| **Victron Configs** | Victron Bluetooth devices | `Required` |
+
+<br/>
+## Integrations
+
+### Tags
+
+This app exposes the following tags for integration with other apps:
+
+| Tag | Description |
+|-----|-------------|
+| `shutdown_requested` | Global tag to request shutdown from apps |
+| `shutdown_at` | Timestamp when shutdown will occur |
+| `low_battery_warning_sent` | Whether low battery warning was sent |
+
+<br/>
+This app works seamlessly with:
+
+- **Platform Interface**: Core Doover platform component
+
+
+<br/>
+
+## Need Help?
+
+- Email: support@doover.com
+- [Community Forum](https://doover.com/community)
+- [Full Documentation](https://docs.doover.com)
+- [Developer Documentation](https://github.com/getdoover/power-management/blob/main/DEVELOPMENT.md)
+
+<br/>
+
+## Version History
+
+### v1.0.0 (Current)
+- Initial release
+
+<br/>
+
+## License
+
+This app is licensed under the [Apache License 2.0](https://github.com/getdoover/power-management/blob/main/LICENSE).

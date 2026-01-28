@@ -62,7 +62,7 @@ profiles = {
     ## Maintian a high battery level, but stay on indefinitely while charging
     Profile.REGULAR_12V.value: {
         "sleep_thresholds": {13.2: 25, 12.9: 60, 12.6: 240},
-        "min_awake_thresholds": {13.2: 240, 12.9: 120, 12.6: 90},
+        "min_awake_thresholds": {13.2: 240, 12.9: 120, 12.6: 120},
     },
 
     ## 24V Profiles
@@ -78,8 +78,8 @@ profiles = {
     },
     ## Maintian a high battery level, but stay on indefinitely while charging
     Profile.REGULAR_24V.value: {
-        "sleep_thresholds": {26.0: 25, 25.0: 60, 24.0: 240},
-        "min_awake_thresholds": {26.0: 240, 25.0: 120, 24.0: 90},
+        "sleep_thresholds": {24.5: 25, 24.0: 60, 23.0: 240},
+        "min_awake_thresholds": {24.5: 300, 24.0: 240, 23.0: 120},
     },
 }
 

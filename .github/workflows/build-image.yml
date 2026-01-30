@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - main
+      - dv1
 
 env:
   REGISTRY: ghcr.io

@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydoover>=0.4.15",
+    "pydoover>=1.0.0a5",
     "victron-ble",
     "bleak==0.22.3",
 ]
@@ -13,6 +13,7 @@ dependencies = [
 [project.scripts]
 doover-app-run = "solar_power_management:main"
 export-config = "solar_power_management.app_config:export"
+export-ui = "solar_power_management.app_ui:export"
 
 [build-system]
 requires = ["hatchling"]

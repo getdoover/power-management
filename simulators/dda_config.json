@@ -2,21 +2,21 @@
     "sleep_time_thresholds": [
         {
             "voltage_threshold": 11.5,
-            "sleep_time_(minutes)": 30
+            "sleep_time_minutes": 30
         },
         {
             "voltage_threshold": 12,
-            "sleep_time_(minutes)": 20
+            "sleep_time_minutes": 20
         }
     ],
     "min_awake_time_thresholds": [
         {
             "voltage_threshold": 11.5,
-            "awake_time_(seconds)": 180
+            "awake_time_seconds": 180
         },
         {
             "voltage_threshold": 12,
-            "awake_time_(seconds)": 300
+            "awake_time_seconds": 300
         }
     ]
 }

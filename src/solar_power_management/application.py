@@ -4,40 +4,25 @@ import time
 from datetime import timedelta, datetime
 
 from pydoover.docker import Application, run_app
+from pydoover.ui import handler
 from pydoover.utils import apply_async_kalman_filter
 
 from .victron import VictronDevice
 from .app_config import PowerManagerConfig
+from .app_tags import PowerManagerTags
 from .app_ui import PowerManagerUI
 
 log = logging.getLogger()
 
 
 class PowerManager(Application):
+    config_cls = PowerManagerConfig
+    tags_cls = PowerManagerTags
+    ui_cls = PowerManagerUI
+
     config: PowerManagerConfig
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.start_time = None
-
-        # Secs that the system is scheduled to sleep for
-        self.scheduled_sleep_time = None
-        # Time that the system is scheduled to sleep
-        self.scheduled_goto_sleep_time = None
-
-        self.soft_watchdog_period_mins = 3 * 60  # 3 hours
-        self.last_watchdog_reset_time = None
-        self.watchdog_reset_interval_secs = 20
-
-        self.last_voltage = None
-        self.last_temp = None
-        self.last_voltage_time = None
-        self.voltage_update_interval = 5
-
-        self.about_to_shutdown = False
-
-        self.victron_devices = []
+    tags: PowerManagerTags
+    ui: PowerManagerUI
 
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
@@ -64,12 +49,11 @@ class PowerManager(Application):
         outlier_threshold=0.5,
     )
     async def get_system_voltage(self) -> float:
-        # Get the current system voltage
-        return await self.platform_iface.get_system_voltage_async()
+        return await self.platform_iface.fetch_system_voltage()
 
     @apply_async_kalman_filter(process_variance=0.5, outlier_threshold=5)
     async def get_system_temperature(self) -> float:
-        return await self.platform_iface.get_system_temperature_async()
+        return await self.platform_iface.fetch_system_temperature()
 
     def get_sleep_time(self) -> int | None:
         if self.last_voltage is None:
@@ -115,8 +99,10 @@ class PowerManager(Application):
             ## Already scheduled to sleep, so just return.
             return
 
-        ## Do a preliminary update of the UI to show the sleep time and time till sleep. However this will be revised later when the actual sleep time is known.
-        self.ui.update_connection_info(sleep_time, time_till_sleep + sleep_time)
+        ## Do a preliminary update of the connection info
+        self.ui.connection_info.connection_period = sleep_time
+        self.ui.connection_info.next_connection = time_till_sleep + sleep_time
+        self.ui.connection_info.offline_after = (time_till_sleep + sleep_time) * 5
 
         if self.awake_time < (self.get_min_awake_time() - time_till_sleep):
             time_till_sleep = self.get_min_awake_time() - self.awake_time
@@ -124,12 +110,10 @@ class PowerManager(Application):
             return
 
         # alert apps that they must report if they can shutdown or not.
-        await self.set_global_tag_async("shutdown_requested", True)
+        await self.set_global_tag("shutdown_requested", True)
 
         # this will fail the first time because apps won't respond
         # quick enough but should run OK on consecutive calls.
-        # this is less 300 seconds because we check for a further 5min before actually setting the shutdown.
-        # probably unnecessary?
         config_override_secs = (
             self.config.override_shutdown_permission_mins.value * 60 - 300
         )
@@ -149,14 +133,14 @@ class PowerManager(Application):
         self.scheduled_goto_sleep_time = time.time() + time_till_sleep
         self.scheduled_sleep_time = sleep_time
 
-        self.ui.update_connection_info(sleep_time, time_till_sleep + sleep_time)
+        self.ui.connection_info.connection_period = sleep_time
+        self.ui.connection_info.next_connection = time_till_sleep + sleep_time
+        self.ui.connection_info.offline_after = (time_till_sleep + sleep_time) * 5
 
     @property
     def time_until_sleep(self) -> int | None:
         if self.scheduled_goto_sleep_time is None:
             return None
-        ## Calculate the time until the system is scheduled to sleep.
-        # scheduled_goto_sleep_time is the time when the system will start the sleep process
         result = int(self.scheduled_goto_sleep_time - time.time() + self.shutdown_process_time)
         return max(result, 0)
 
@@ -169,15 +153,14 @@ class PowerManager(Application):
     @property
     def shutdown_permitted(self):
         # search through app state for any apps that have shutdown_permitted = False
-        # if they don't define it (shouldn't happen), assume True.
-        for k, v in self._tag_values.items():
+        for k, v in self.tag_manager._tag_values.items():
             if isinstance(v, dict) and v.get("shutdown_check_ok", True) is False:
                 log.info(f"Shutdown not permitted by {k}.")
                 return False
         return True
 
     async def get_immunity_time(self) -> int | None:
-        immunity_secs = await self.platform_iface.get_immunity_seconds_async()
+        immunity_secs = await self.platform_iface.fetch_immunity_seconds()
         if immunity_secs is not None and immunity_secs <= 1:
             immunity_secs = None
         return immunity_secs
@@ -187,33 +170,26 @@ class PowerManager(Application):
             self.scheduled_sleep_time = self.get_sleep_time()
 
         log.info(f"Scheduling next startup in {self.scheduled_sleep_time} seconds...")
-        await self.platform_iface.schedule_startup_async(self.scheduled_sleep_time)
+        await self.platform_iface.schedule_startup(self.scheduled_sleep_time)
 
     async def assess_power(self):
-        """
-        Monitor system voltage, determine sleep time, and handle shutdown.
-        """
+        """Monitor system voltage, determine sleep time, and handle shutdown."""
         if self.start_time is None:
             log.info("Setting start time")
             self.start_time = time.time()
 
-        # Update the system voltage
         await self.update_voltage()
 
-        # If the system is already scheduled to sleep, check if it's time to sleep
         if self.is_ready_to_sleep:
             log.info("Ready to sleep. Requesting shutdown...")
-            # await self.request_shutdown_async()
             await self.go_to_sleep()
             return
 
-        # Determine the sleep time from the config & current voltage
         sleep_time = self.get_sleep_time()
         if sleep_time is None:
             log.info("No sleep time found.")
             return
 
-        # Attempt to schedule the sleep
         log.info(f"Scheduling next sleep in {sleep_time} seconds...")
         await self.maybe_schedule_sleep(sleep_time)
 
@@ -223,19 +199,15 @@ class PowerManager(Application):
         return 40
 
     async def go_to_sleep(self):
-        """
-        Put the system to sleep.
-        """
+        """Put the system to sleep."""
         log.warning("Putting system to sleep...")
 
         log.info("Setting shutdown_requested hooks")
-        # this should run all on_shutdown_requested hooks in each app.
-        await self.set_global_tag_async("shutdown_requested", True)
+        await self.set_global_tag("shutdown_requested", True)
 
         log.info("Sleeping for 20 seconds to allow shutdown hooks to run...")
         await asyncio.sleep(20)
 
-        ## Update the UI again
         await self.refresh_ui()
 
         # for a maximum of 300 seconds (5min), check if shutdown is permitted
@@ -249,7 +221,6 @@ class PowerManager(Application):
                 )
                 await asyncio.sleep(5)
 
-        ## Update the UI again
         await self.refresh_ui()
 
         # either shutdown is permitted, or we've timed out. Either way, proceed to shutdown...
@@ -257,20 +228,20 @@ class PowerManager(Application):
 
         ## Run shutdown hooks
         shutdown_at = datetime.now() + timedelta(seconds=shutdown_grace_period)
-        await self.set_global_tag_async("shutdown_at", shutdown_at.timestamp())
+        await self.set_global_tag("shutdown_at", shutdown_at.timestamp())
 
         ## schedule the next startup
         await self.schedule_next_startup()
 
         ## Put the system to sleep
         log.info(f"Scheduling shutdown to occur in {shutdown_grace_period} seconds...")
-        await asyncio.sleep(shutdown_grace_period/2)
+        await asyncio.sleep(shutdown_grace_period / 2)
         await self.run_shutdown_hook(shutdown_at)
-        await asyncio.sleep(shutdown_grace_period/2)
+        await asyncio.sleep(shutdown_grace_period / 2)
 
         log.info("Scheduling a hard shutdown in 60 seconds time as a safety net")
-        await self.platform_iface.schedule_shutdown_async(60)
-        await self.platform_iface.shutdown_async()
+        await self.platform_iface.schedule_shutdown(60)
+        await self.platform_iface.shutdown()
 
         ## Cleanly disconnect the device comms and then wait for sleep
         log.info("Waiting for device to shutdown...")
@@ -294,7 +265,7 @@ class PowerManager(Application):
 
         if flag:
             try:
-                await self.platform_iface.schedule_shutdown_async(
+                await self.platform_iface.schedule_shutdown(
                     self.soft_watchdog_period_mins * 60
                 )
             except Exception as e:
@@ -304,33 +275,48 @@ class PowerManager(Application):
 
     async def setup(self):
         log.info("Setting up PowerManager...")
+
+        # Initialize state
+        self.start_time = None
+        self.scheduled_sleep_time = None
+        self.scheduled_goto_sleep_time = None
+        self.soft_watchdog_period_mins = 3 * 60  # 3 hours
+        self.last_watchdog_reset_time = None
+        self.watchdog_reset_interval_secs = 20
+        self.last_voltage = None
+        self.last_temp = None
+        self.last_voltage_time = None
+        self.voltage_update_interval = 5
+        self.about_to_shutdown = False
+        self.victron_devices = []
+
         await self.maybe_reset_soft_watchdog()
 
         for victron_config in self.config.victron_configs.elements:
-            self.victron_devices.append(VictronDevice(victron_config.device_address.value, victron_config.device_key.value))
+            self.victron_devices.append(
+                VictronDevice(
+                    victron_config.device_address.value,
+                    victron_config.device_key.value,
+                )
+            )
             await self.victron_devices[-1].start()
         log.info(f"Found {len(self.victron_devices)} Victron devices.")
 
-        self.ui = PowerManagerUI(self)
-        # self.set_ui_status_icon(None)
-
-        self.ui_manager.add_children(*self.ui.fetch())
-        self.ui_manager.set_display_name("Power & Battery")
-        self.ui_manager.set_position(self.config.position.value)
+        # Show Victron UI elements if devices are configured
+        if self.victron_devices:
+            await self.tags.victron_hidden.set(False)
 
         # set shutdown_requested for all apps to False.
         log.info("Setting shutdown_requested tag for all apps to False.")
-        await self.set_global_tag_async("shutdown_requested", False)
-        await self.set_global_tag_async("shutdown_at", None)
-        for app_key, v in self._tag_values.items():
+        await self.set_global_tag("shutdown_requested", False)
+        await self.set_global_tag("shutdown_at", None)
+        for app_key, v in self.tag_manager._tag_values.items():
             if not isinstance(v, dict) or app_key in (
                 "shutdown_requested",
                 "shutdown_at",
             ):
-                # skip any non-dict values (app-based tags will always be in a dict).
                 continue
-
-            await self.set_tag_async("shutdown_requested", False, app_key)
+            await self.set_tag("shutdown_requested", False, app_key)
 
         ## Attempt 3 times to get a non-None voltage
         for i in range(3):
@@ -346,33 +332,49 @@ class PowerManager(Application):
 
         shutdown_requested = any(
             isinstance(v, dict) and v.get("shutdown_requested", False) is True
-            for k, v in self._tag_values.items()
+            for k, v in self.tag_manager._tag_values.items()
         )
 
         if self.is_battery_low:
-            if not self.get_tag("low_battery_warning_sent", self.app_key):
+            if not self.tags.low_battery_warning_sent.value:
                 message = f"Battery voltage is low: {self.last_voltage}V."
                 log.info(f"Sending low battery message: {message}")
-                await self.publish_to_channel("significantEvent", message)
-                await self.set_tag_async("low_battery_warning_sent", True)
+                await self.create_message("notification", {"message": message})
+                await self.tags.low_battery_warning_sent.set(True)
         else:
-            await self.set_tag_async("low_battery_warning_sent", False)
+            await self.tags.low_battery_warning_sent.set(False)
 
-        # Refresh the UI with the latest info
-        await self.check_set_immunity()
         await self.refresh_ui()
 
         if shutdown_requested:
             log.info("Shutdown requested. Initiating shutdown procedure...")
             await self.maybe_schedule_sleep(self.get_sleep_time())
 
-    # This can't be called 'update_ui' because it conflicts with the UI update method on the Application class.
     async def refresh_ui(self):
-        """Update the UI with the latest info"""
+        """Update tags which auto-update the UI via tag bindings."""
+        await self.tags.system_voltage.set(self.last_voltage)
+        await self.tags.system_temperature.set(self.last_temp)
+        await self.tags.is_online.set(not self.about_to_shutdown)
 
+        # Low battery warning
+        await self.tags.low_batt_warning_hidden.set(
+            not (self.last_voltage and self.is_battery_low)
+        )
+
+        # Immunity warning
         immunity_time = await self.get_immunity_time()
+        if immunity_time and immunity_time > 45:
+            await self.tags.immune_warning_hidden.set(False)
+            mins_awake = max(1, round(immunity_time / 60))
+            if mins_awake <= 1:
+                text = "Device will stay awake for 1 min"
+            else:
+                text = f"Device will stay awake for {mins_awake} mins"
+            await self.tags.immune_warning_text.set(text)
+        else:
+            await self.tags.immune_warning_hidden.set(True)
 
-        ## Show a warning if the device is about to sleep, but clear it if its about to shutdown so the warning isn't left on while asleep
+        # Sleep warning
         sleep_warning_time = (
             self.time_until_sleep
             if self.time_until_sleep
@@ -380,28 +382,38 @@ class PowerManager(Application):
             and not self.about_to_shutdown
             else None
         )
+        if sleep_warning_time:
+            if sleep_warning_time < 45:
+                # Hide in the last 45 seconds so it doesn't persist while asleep
+                await self.tags.about_to_sleep_warning_hidden.set(True)
+            else:
+                await self.tags.about_to_sleep_warning_hidden.set(False)
+                await self.tags.about_to_sleep_warning_text.set(
+                    f"Device will sleep in {sleep_warning_time} seconds"
+                )
+        else:
+            await self.tags.about_to_sleep_warning_hidden.set(True)
 
-        self.ui.update(
-            self.last_voltage,
-            self.last_temp,
-            not self.about_to_shutdown,
-            self.is_battery_low,
-            immunity_time,
-            sleep_warning_time,
-        )
+        # Victron charger data
+        if self.victron_devices:
+            for device in self.victron_devices:
+                await self.tags.charge_state.set(device.state)
+                await self.tags.charge_current.set(device.output_current)
+                await self.tags.charge_voltage.set(device.output_voltage)
+                await self.tags.charge_power.set(device.output_power)
 
-    async def check_set_immunity(self):
-        """Check to see if the immunity mode Action has been triggered"""
-        if self.ui.enable_immunity.current_value is not True:
-            return
-
+    @handler("enable_immunity")
+    async def on_enable_immunity(self, ctx, value):
         log.info("Immunity for 30 mins triggered")
-        await self.platform_iface.set_immunity_seconds_async(30 * 60)
-        self.ui.enable_immunity.coerce(None) # Reset command
+        await self.platform_iface.set_immunity_seconds(30 * 60)
+        await ctx.set_value(None)
 
     @property
     def is_battery_low(self) -> bool:
-        battery_low_alarm = self.ui.low_batt_alarm.current_value
+        try:
+            battery_low_alarm = self.ui.low_batt_alarm.value
+        except (KeyError, AttributeError):
+            battery_low_alarm = self.ui.low_batt_alarm.default
         if self.last_voltage is None or battery_low_alarm is None:
             return False
         return self.last_voltage < battery_low_alarm
@@ -409,11 +421,10 @@ class PowerManager(Application):
     async def run_shutdown_hook(self, dt: datetime) -> None:
         self.about_to_shutdown = True
         await self.refresh_ui()
-        # self.set_ui_status_icon("idle")
-        await self.ui_manager.handle_comms_async(True)
-        await asyncio.sleep(3) # Wait for the UI to be fully updated, push through any pending UI updates, etc
-        log.info("Pre-shutdown hook run, ui synced and ready for shutdown.")
+        await self.tag_manager.commit_tags()
+        await asyncio.sleep(3)
+        log.info("Pre-shutdown hook run, tags flushed and ready for shutdown.")
 
 
 if __name__ == "__main__":
-    run_app(PowerManager(config=PowerManagerConfig()))
+    run_app(PowerManager())

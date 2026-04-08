@@ -29,7 +29,7 @@
         "config_schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$id": "",
-            "title": "Application Config",
+            "title": "$default",
             "type": "object",
             "properties": {
                 "profile": {
@@ -45,43 +45,63 @@
                     "title": "Profile",
                     "x-name": "profile",
                     "x-hidden": false,
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
                     "description": "The Profile to use for the power management.",
-                    "default": "Regular (12V)"
+                    "default": "Regular (12V)",
+                    "x-position": 0
                 },
                 "sleep_time_thresholds": {
                     "title": "Sleep Time Thresholds",
                     "x-name": "sleep_time_thresholds",
                     "x-hidden": false,
                     "type": "array",
+                    "x-required": true,
                     "description": "Only used if the profile is 'Custom'. Custom thresholds for sleep times",
+                    "x-position": 1,
                     "items": {
                         "title": "Sleep Time Thresholds",
                         "x-name": "sleep_time_thresholds",
                         "x-hidden": false,
                         "type": "object",
+                        "x-required": true,
                         "properties": {
                             "voltage_threshold": {
                                 "title": "Voltage Threshold",
                                 "x-name": "voltage_threshold",
                                 "x-hidden": false,
-                                "type": "number",
+                                "type": [
+                                    "number",
+                                    "null"
+                                ],
+                                "x-required": false,
                                 "default": 11.5,
+                                "x-position": 1,
                                 "minimum": 0,
                                 "maximum": 36
                             },
-                            "sleep_time_(minutes)": {
+                            "sleep_time_minutes": {
                                 "title": "Sleep Time (minutes)",
-                                "x-name": "sleep_time_(minutes)",
+                                "x-name": "sleep_time_minutes",
                                 "x-hidden": false,
-                                "type": "integer",
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "x-required": false,
                                 "default": 30,
+                                "x-position": 2,
                                 "minimum": 0,
                                 "maximum": 3600
                             }
                         },
                         "additionalElements": true,
-                        "required": []
+                        "required": [],
+                        "x-collapsible": true,
+                        "x-defaultCollapsed": false
                     }
                 },
                 "min_awake_time_thresholds": {
@@ -89,42 +109,62 @@
                     "x-name": "min_awake_time_thresholds",
                     "x-hidden": false,
                     "type": "array",
+                    "x-required": true,
                     "description": "Only used if the profile is 'Custom'. Custom thresholds for minimum awake times",
+                    "x-position": 2,
                     "items": {
                         "title": "Awake Time Thresholds",
                         "x-name": "awake_time_thresholds",
                         "x-hidden": false,
                         "type": "object",
+                        "x-required": true,
                         "properties": {
                             "voltage_threshold": {
                                 "title": "Voltage Threshold",
                                 "x-name": "voltage_threshold",
                                 "x-hidden": false,
-                                "type": "number",
+                                "type": [
+                                    "number",
+                                    "null"
+                                ],
+                                "x-required": false,
                                 "default": 11.5,
+                                "x-position": 1,
                                 "minimum": 0,
                                 "maximum": 36
                             },
-                            "awake_time_(seconds)": {
+                            "awake_time_seconds": {
                                 "title": "Awake Time (seconds)",
-                                "x-name": "awake_time_(seconds)",
+                                "x-name": "awake_time_seconds",
                                 "x-hidden": false,
-                                "type": "integer",
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ],
+                                "x-required": false,
                                 "default": 90,
+                                "x-position": 2,
                                 "minimum": 0,
                                 "maximum": 3600
                             }
                         },
                         "additionalElements": true,
-                        "required": []
+                        "required": [],
+                        "x-collapsible": true,
+                        "x-defaultCollapsed": false
                     }
                 },
                 "override_shutdown_permission_in_minutes": {
                     "title": "Override Shutdown Permission in Minutes",
                     "x-name": "override_shutdown_permission_in_minutes",
                     "x-hidden": false,
-                    "type": "integer",
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
                     "default": 60,
+                    "x-position": 3,
                     "minimum": 10,
                     "maximum": 1440
                 },
@@ -133,43 +173,62 @@
                     "x-name": "victron_configs",
                     "x-hidden": false,
                     "type": "array",
+                    "x-required": true,
                     "description": "The Victron devices to bluetooth to.",
+                    "x-position": 4,
                     "items": {
                         "title": "Victron Bluetooth Config",
                         "x-name": "victron_bluetooth_config",
                         "x-hidden": false,
                         "type": "object",
+                        "x-required": true,
                         "properties": {
                             "device_address": {
                                 "title": "Device Address",
                                 "x-name": "device_address",
                                 "x-hidden": false,
-                                "type": "string",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "x-required": false,
                                 "description": "The MAC address of the Victron device to bluetooth to. (The short one)",
-                                "default": null
+                                "default": null,
+                                "x-position": 1
                             },
                             "device_key": {
                                 "title": "Device Key",
                                 "x-name": "device_key",
                                 "x-hidden": false,
-                                "type": "string",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "x-required": false,
                                 "description": "The Key of the Victron device to bluetooth to. (The long one)",
-                                "default": null
+                                "default": null,
+                                "x-position": 2
                             }
                         },
                         "additionalElements": true,
-                        "required": []
+                        "required": [],
+                        "x-collapsible": true,
+                        "x-defaultCollapsed": false
                     }
                 },
-                "position": {
+                "dv-app-position": {
                     "title": "Position",
-                    "x-name": "position",
-                    "x-hidden": false,
-                    "type": "integer",
-                    "description": "The position of the power management app in the UI. Smaller is higher, larger is lower. 100 is the default position of most apps.",
+                    "x-name": "dv-app-position",
+                    "x-hidden": true,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Position of Application in UI Structure. Smaller numbers are closer to the top.",
                     "default": 120,
-                    "minimum": 0,
-                    "maximum": 200
+                    "x-position": 5,
+                    "minimum": 0
                 }
             },
             "additionalElements": true,
@@ -184,6 +243,142 @@
         "repo_branch": "main",
         "export_config_command": null,
         "run_command": null,
-        "lambda_arn": null
+        "lambda_arn": null,
+        "ui_schema": {
+            "displayString": "Power & Battery",
+            "hidden": "$config.app().hidden:boolean:false:boolean:false",
+            "position": "$config.app().position:number:50",
+            "icon": null,
+            "colour": null,
+            "defaultOpen": false,
+            "type": "uiApplication",
+            "name": "$config.app().APP_KEY",
+            "children": {
+                "connectionInfo": {
+                    "name": "connectionInfo",
+                    "type": "uiConnectionInfo",
+                    "connectionType": "periodic"
+                },
+                "battery_voltage_v": {
+                    "name": "battery_voltage_v",
+                    "type": "uiVariable",
+                    "displayString": "Battery Voltage (V)",
+                    "showActivity": true,
+                    "position": 52,
+                    "hidden": false,
+                    "varType": "float",
+                    "currentValue": "$tag.app().system_voltage:number:null",
+                    "decPrecision": 1
+                },
+                "low_battery_alarm_v": {
+                    "name": "low_battery_alarm_v",
+                    "type": "uiSlider",
+                    "displayString": "Low Battery Alarm (V)",
+                    "position": 53,
+                    "hidden": false,
+                    "min": 6,
+                    "max": 13,
+                    "stepSize": 0.25,
+                    "dualSlider": false,
+                    "isInverted": false
+                },
+                "charger_state": {
+                    "name": "charger_state",
+                    "type": "uiVariable",
+                    "displayString": "Charger State",
+                    "showActivity": true,
+                    "position": 54,
+                    "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "varType": "string",
+                    "currentValue": "$tag.app().charge_state:string:null"
+                },
+                "charger_current_a": {
+                    "name": "charger_current_a",
+                    "type": "uiVariable",
+                    "displayString": "Charger Current (A)",
+                    "showActivity": true,
+                    "position": 55,
+                    "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "varType": "float",
+                    "currentValue": "$tag.app().charge_current:number:null",
+                    "decPrecision": 1
+                },
+                "charge_voltage_v": {
+                    "name": "charge_voltage_v",
+                    "type": "uiVariable",
+                    "displayString": "Charge Voltage (V)",
+                    "showActivity": true,
+                    "position": 56,
+                    "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "varType": "float",
+                    "currentValue": "$tag.app().charge_voltage:number:null",
+                    "decPrecision": 1
+                },
+                "charge_power_w": {
+                    "name": "charge_power_w",
+                    "type": "uiVariable",
+                    "displayString": "Charge Power (W)",
+                    "showActivity": true,
+                    "position": 57,
+                    "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "varType": "float",
+                    "currentValue": "$tag.app().charge_power:number:null",
+                    "decPrecision": 1
+                },
+                "temperature_c": {
+                    "name": "temperature_c",
+                    "type": "uiVariable",
+                    "displayString": "Temperature (\u00b0C)",
+                    "showActivity": true,
+                    "position": 58,
+                    "hidden": false,
+                    "varType": "float",
+                    "currentValue": "$tag.app().system_temperature:number:null",
+                    "decPrecision": 1
+                },
+                "online_now": {
+                    "name": "online_now",
+                    "type": "uiVariable",
+                    "displayString": "Online Now",
+                    "showActivity": true,
+                    "position": 59,
+                    "hidden": false,
+                    "varType": "bool",
+                    "currentValue": "$tag.app().is_online:boolean:true"
+                },
+                "enable_immunity": {
+                    "name": "enable_immunity",
+                    "type": "uiButton",
+                    "displayString": "Stay On For 30 Mins",
+                    "position": 60,
+                    "hidden": false,
+                    "requiresConfirm": false
+                },
+                "low_battery": {
+                    "name": "low_battery",
+                    "type": "uiWarningIndicator",
+                    "displayString": "Low Battery",
+                    "position": 61,
+                    "hidden": "$tag.app().low_batt_warning_hidden:boolean:true",
+                    "can_cancel": true
+                },
+                "device_in_immunity_mode": {
+                    "name": "device_in_immunity_mode",
+                    "type": "uiWarningIndicator",
+                    "displayString": "Device in Immunity Mode",
+                    "position": 62,
+                    "hidden": "$tag.app().immune_warning_hidden:boolean:true",
+                    "can_cancel": true
+                },
+                "device_is_about_to_sleep": {
+                    "name": "device_is_about_to_sleep",
+                    "type": "uiWarningIndicator",
+                    "displayString": "Device is about to sleep",
+                    "position": 63,
+                    "hidden": "$tag.app().about_to_sleep_warning_hidden:boolean:true",
+                    "can_cancel": true
+                }
+            }
+        }
     }
 }

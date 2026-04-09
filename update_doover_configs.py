@@ -5,7 +5,6 @@ Adds lambda_config, owner_org_id, and container_registry_profile_id to app confi
 """
 
 import json
-import os
 from pathlib import Path
 
 # Base directory
@@ -172,12 +171,12 @@ def main():
             print(f"  ERROR: {error}")
             error_files.append((config_path, error))
         elif changes:
-            print(f"  MODIFIED:")
+            print("  MODIFIED:")
             for change in changes:
                 print(f"    {change}")
             modified_files.append((config_path, changes))
         else:
-            print(f"  No changes needed")
+            print("  No changes needed")
             unchanged_files.append(config_path)
         print()
     

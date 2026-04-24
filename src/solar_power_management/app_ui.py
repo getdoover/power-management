@@ -8,13 +8,15 @@ from .app_tags import PowerManagerTags
 
 class PowerManagerUI(ui.UI, display_name="Power & Battery"):
     system_voltage = ui.NumericVariable(
-        "Battery Voltage (V)",
+        "Battery Voltage",
+        units="V",
         value=PowerManagerTags.system_voltage,
         precision=1,
     )
 
     low_batt_alarm = ui.Slider(
-        "Low Battery Alarm (V)",
+        "Low Battery Alarm",
+        units="V",
         min_val=6,
         max_val=13,
         step_size=0.25,
@@ -30,26 +32,30 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
         hidden=PowerManagerTags.victron_hidden,
     )
     charge_current = ui.NumericVariable(
-        "Charger Current (A)",
+        "Charger Current",
+        units="A",
         value=PowerManagerTags.charge_current,
         precision=1,
         hidden=PowerManagerTags.victron_hidden,
     )
     charge_voltage = ui.NumericVariable(
-        "Charge Voltage (V)",
+        "Charge Voltage",
+        units="V",
         value=PowerManagerTags.charge_voltage,
         precision=1,
         hidden=PowerManagerTags.victron_hidden,
     )
     charge_power = ui.NumericVariable(
-        "Charge Power (W)",
+        "Charge Power",
+        units="W",
         value=PowerManagerTags.charge_power,
         precision=1,
         hidden=PowerManagerTags.victron_hidden,
     )
 
     system_temperature = ui.NumericVariable(
-        "Temperature (\u00b0C)",
+        "Temperature",
+        units="(\u00b0C)",
         value=PowerManagerTags.system_temperature,
         precision=1,
     )

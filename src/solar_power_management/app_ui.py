@@ -7,10 +7,6 @@ from .app_tags import PowerManagerTags
 
 
 class PowerManagerUI(ui.UI, display_name="Power & Battery"):
-    connection_info = ui.ConnectionInfo(
-        connection_type=ui.ConnectionType.periodic,
-    )
-
     system_voltage = ui.NumericVariable(
         "Battery Voltage (V)",
         value=PowerManagerTags.system_voltage,
@@ -75,20 +71,18 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
     )
 
     is_immune_warning = ui.WarningIndicator(
-        "Device in Immunity Mode",
+        name="is_immune_warning",
+        display_name=PowerManagerTags.immune_warning_text,
         hidden=PowerManagerTags.immune_warning_hidden,
     )
 
     about_to_sleep_warning = ui.WarningIndicator(
-        "Device is about to sleep",
+        name="about_to_sleep_warning",
+        display_name=PowerManagerTags.about_to_sleep_warning_text,
         hidden=PowerManagerTags.about_to_sleep_warning_hidden,
     )
 
     async def setup(self):
-        # Bind dynamic display names to tags so they update automatically
-        self.is_immune_warning.display_name = PowerManagerTags.immune_warning_text
-        self.about_to_sleep_warning.display_name = PowerManagerTags.about_to_sleep_warning_text
-
         # Set voltage ranges based on 12V/24V config
         if self.config.is_12v:
             self.system_voltage.ranges = [
@@ -110,18 +104,6 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
 
 def export():
     """Export the base UI schema. Runtime setup() will publish the full dynamic schema."""
-    instance = PowerManagerUI(None, None, None)
-    fp = Path(__file__).parents[2] / "doover_config.json"
-
-    if fp.exists():
-        data = json.loads(fp.read_text())
-    else:
-        data = {}
-
-    schema = instance.to_schema(resolve_config=False)
-    try:
-        data["solar_power_management"]["ui_schema"] = schema
-    except KeyError:
-        data["solar_power_management"] = {"ui_schema": schema}
-
-    fp.write_text(json.dumps(data, indent=4))
+    PowerManagerUI(None, None, None).export(
+        Path(__file__).parents[2] / "doover_config.json", "solar_power_management"
+    )

@@ -63,7 +63,7 @@ class PowerManager(Application):
             self.config.sleep_time_threshold_lookup, key=lambda x: x[0]
         ):
             if self.last_voltage <= voltage:
-                log.info(f"Sleep time determined from config: {sleep_time} seconds")
+                log.info(f"Sleep time determined from config: {sleep_time} minutes")
                 return sleep_time * 60
 
     def get_min_awake_time(self) -> int:

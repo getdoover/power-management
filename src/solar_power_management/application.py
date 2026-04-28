@@ -106,7 +106,7 @@ class PowerManager(Application):
             offline_after = None
 
         config = ConnectionConfig(
-            connection_type=DooverConnectionType.periodic,
+            connection_type=DooverConnectionType.periodic_continuous,
             expected_interval=sleep_time,
             offline_after=offline_after,
             sleep_time=sleep_time,

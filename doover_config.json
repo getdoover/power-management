@@ -216,9 +216,9 @@
                         "x-defaultCollapsed": false
                     }
                 },
-                "dv-app-position": {
+                "dv_app_position": {
                     "title": "Position",
-                    "x-name": "dv-app-position",
+                    "x-name": "dv_app_position",
                     "x-hidden": true,
                     "type": [
                         "integer",
@@ -247,10 +247,10 @@
         "ui_schema": {
             "displayString": "Power & Battery",
             "hidden": "$config.app().hidden:boolean:false:boolean:false",
-            "position": "$config.app().position:number:50",
+            "position": "$config.app().dv_app_position:number:100",
             "icon": null,
             "colour": null,
-            "defaultOpen": false,
+            "defaultOpen": "$config.app().dv_app_default_open:boolean",
             "type": "uiApplication",
             "name": "$config.app().APP_KEY",
             "children": {
@@ -276,6 +276,8 @@
                     "displayString": "Low Battery Alarm (V)",
                     "position": 53,
                     "hidden": false,
+                    "currentValue": "$cmds.app().low_battery_alarm_v::11.0",
+                    "default": 11.0,
                     "min": 6,
                     "max": 13,
                     "stepSize": 0.25,
@@ -352,6 +354,7 @@
                     "displayString": "Stay On For 30 Mins",
                     "position": 60,
                     "hidden": false,
+                    "currentValue": "$cmds.app().enable_immunity",
                     "requiresConfirm": false
                 },
                 "low_battery": {
@@ -360,6 +363,7 @@
                     "displayString": "Low Battery",
                     "position": 61,
                     "hidden": "$tag.app().low_batt_warning_hidden:boolean:true",
+                    "currentValue": "$cmds.app().low_battery",
                     "can_cancel": true
                 },
                 "device_in_immunity_mode": {
@@ -368,6 +372,7 @@
                     "displayString": "Device in Immunity Mode",
                     "position": 62,
                     "hidden": "$tag.app().immune_warning_hidden:boolean:true",
+                    "currentValue": "$cmds.app().device_in_immunity_mode",
                     "can_cancel": true
                 },
                 "device_is_about_to_sleep": {
@@ -376,6 +381,7 @@
                     "displayString": "Device is about to sleep",
                     "position": 63,
                     "hidden": "$tag.app().about_to_sleep_warning_hidden:boolean:true",
+                    "currentValue": "$cmds.app().device_is_about_to_sleep",
                     "can_cancel": true
                 }
             }

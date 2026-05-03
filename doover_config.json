@@ -254,29 +254,26 @@
             "type": "uiApplication",
             "name": "$config.app().APP_KEY",
             "children": {
-                "connectionInfo": {
-                    "name": "connectionInfo",
-                    "type": "uiConnectionInfo",
-                    "connectionType": "periodic"
-                },
-                "battery_voltage_v": {
-                    "name": "battery_voltage_v",
+                "battery_voltage": {
+                    "name": "battery_voltage",
                     "type": "uiVariable",
-                    "displayString": "Battery Voltage (V)",
+                    "displayString": "Battery Voltage",
                     "showActivity": true,
-                    "position": 52,
+                    "position": 51,
                     "hidden": false,
+                    "units": "V",
                     "varType": "float",
                     "currentValue": "$tag.app().system_voltage:number:null",
                     "decPrecision": 1
                 },
-                "low_battery_alarm_v": {
-                    "name": "low_battery_alarm_v",
+                "low_battery_alarm": {
+                    "name": "low_battery_alarm",
                     "type": "uiSlider",
-                    "displayString": "Low Battery Alarm (V)",
-                    "position": 53,
+                    "displayString": "Low Battery Alarm",
+                    "position": 52,
                     "hidden": false,
-                    "currentValue": "$cmds.app().low_battery_alarm_v::11.0",
+                    "units": "V",
+                    "currentValue": "$cmds.app().low_battery_alarm::11.0",
                     "default": 11.0,
                     "min": 6,
                     "max": 13,
@@ -289,51 +286,55 @@
                     "type": "uiVariable",
                     "displayString": "Charger State",
                     "showActivity": true,
-                    "position": 54,
+                    "position": 53,
                     "hidden": "$tag.app().victron_hidden:boolean:true",
                     "varType": "string",
                     "currentValue": "$tag.app().charge_state:string:null"
                 },
-                "charger_current_a": {
-                    "name": "charger_current_a",
+                "charger_current": {
+                    "name": "charger_current",
                     "type": "uiVariable",
-                    "displayString": "Charger Current (A)",
+                    "displayString": "Charger Current",
                     "showActivity": true,
-                    "position": 55,
+                    "position": 54,
                     "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "units": "A",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_current:number:null",
                     "decPrecision": 1
                 },
-                "charge_voltage_v": {
-                    "name": "charge_voltage_v",
+                "charge_voltage": {
+                    "name": "charge_voltage",
                     "type": "uiVariable",
-                    "displayString": "Charge Voltage (V)",
+                    "displayString": "Charge Voltage",
                     "showActivity": true,
-                    "position": 56,
+                    "position": 55,
                     "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "units": "V",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_voltage:number:null",
                     "decPrecision": 1
                 },
-                "charge_power_w": {
-                    "name": "charge_power_w",
+                "charge_power": {
+                    "name": "charge_power",
                     "type": "uiVariable",
-                    "displayString": "Charge Power (W)",
+                    "displayString": "Charge Power",
                     "showActivity": true,
-                    "position": 57,
+                    "position": 56,
                     "hidden": "$tag.app().victron_hidden:boolean:true",
+                    "units": "W",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_power:number:null",
                     "decPrecision": 1
                 },
-                "temperature_c": {
-                    "name": "temperature_c",
+                "temperature": {
+                    "name": "temperature",
                     "type": "uiVariable",
-                    "displayString": "Temperature (\u00b0C)",
+                    "displayString": "Temperature",
                     "showActivity": true,
-                    "position": 58,
+                    "position": 57,
                     "hidden": false,
+                    "units": "(\u00b0C)",
                     "varType": "float",
                     "currentValue": "$tag.app().system_temperature:number:null",
                     "decPrecision": 1
@@ -343,7 +344,7 @@
                     "type": "uiVariable",
                     "displayString": "Online Now",
                     "showActivity": true,
-                    "position": 59,
+                    "position": 58,
                     "hidden": false,
                     "varType": "bool",
                     "currentValue": "$tag.app().is_online:boolean:true"
@@ -352,7 +353,7 @@
                     "name": "enable_immunity",
                     "type": "uiButton",
                     "displayString": "Stay On For 30 Mins",
-                    "position": 60,
+                    "position": 59,
                     "hidden": false,
                     "currentValue": "$cmds.app().enable_immunity",
                     "requiresConfirm": false
@@ -361,27 +362,27 @@
                     "name": "low_battery",
                     "type": "uiWarningIndicator",
                     "displayString": "Low Battery",
-                    "position": 61,
+                    "position": 60,
                     "hidden": "$tag.app().low_batt_warning_hidden:boolean:true",
                     "currentValue": "$cmds.app().low_battery",
                     "can_cancel": true
                 },
-                "device_in_immunity_mode": {
-                    "name": "device_in_immunity_mode",
+                "is_immune_warning": {
+                    "name": "is_immune_warning",
                     "type": "uiWarningIndicator",
-                    "displayString": "Device in Immunity Mode",
-                    "position": 62,
+                    "displayString": "$tag.app().immune_warning_text:string:\"Device in Immunity Mode\"",
+                    "position": 61,
                     "hidden": "$tag.app().immune_warning_hidden:boolean:true",
-                    "currentValue": "$cmds.app().device_in_immunity_mode",
+                    "currentValue": "$cmds.app().is_immune_warning",
                     "can_cancel": true
                 },
-                "device_is_about_to_sleep": {
-                    "name": "device_is_about_to_sleep",
+                "about_to_sleep_warning": {
+                    "name": "about_to_sleep_warning",
                     "type": "uiWarningIndicator",
-                    "displayString": "Device is about to sleep",
-                    "position": 63,
+                    "displayString": "$tag.app().about_to_sleep_warning_text:string:\"Device is about to sleep\"",
+                    "position": 62,
                     "hidden": "$tag.app().about_to_sleep_warning_hidden:boolean:true",
-                    "currentValue": "$cmds.app().device_is_about_to_sleep",
+                    "currentValue": "$cmds.app().about_to_sleep_warning",
                     "can_cancel": true
                 }
             }

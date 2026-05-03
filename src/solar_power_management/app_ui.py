@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from pydoover import ui
@@ -7,18 +6,16 @@ from .app_tags import PowerManagerTags
 
 
 class PowerManagerUI(ui.UI, display_name="Power & Battery"):
-    connection_info = ui.ConnectionInfo(
-        connection_type=ui.ConnectionType.periodic,
-    )
-
     system_voltage = ui.NumericVariable(
-        "Battery Voltage (V)",
+        "Battery Voltage",
+        units="V",
         value=PowerManagerTags.system_voltage,
         precision=1,
     )
 
     low_batt_alarm = ui.Slider(
-        "Low Battery Alarm (V)",
+        "Low Battery Alarm",
+        units="V",
         min_val=6,
         max_val=13,
         step_size=0.25,
@@ -34,26 +31,30 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
         hidden=PowerManagerTags.victron_hidden,
     )
     charge_current = ui.NumericVariable(
-        "Charger Current (A)",
+        "Charger Current",
+        units="A",
         value=PowerManagerTags.charge_current,
         precision=1,
         hidden=PowerManagerTags.victron_hidden,
     )
     charge_voltage = ui.NumericVariable(
-        "Charge Voltage (V)",
+        "Charge Voltage",
+        units="V",
         value=PowerManagerTags.charge_voltage,
         precision=1,
         hidden=PowerManagerTags.victron_hidden,
     )
     charge_power = ui.NumericVariable(
-        "Charge Power (W)",
+        "Charge Power",
+        units="W",
         value=PowerManagerTags.charge_power,
         precision=1,
         hidden=PowerManagerTags.victron_hidden,
     )
 
     system_temperature = ui.NumericVariable(
-        "Temperature (\u00b0C)",
+        "Temperature",
+        units="(\u00b0C)",
         value=PowerManagerTags.system_temperature,
         precision=1,
     )
@@ -75,20 +76,18 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
     )
 
     is_immune_warning = ui.WarningIndicator(
-        "Device in Immunity Mode",
+        name="is_immune_warning",
+        display_name=PowerManagerTags.immune_warning_text,
         hidden=PowerManagerTags.immune_warning_hidden,
     )
 
     about_to_sleep_warning = ui.WarningIndicator(
-        "Device is about to sleep",
+        name="about_to_sleep_warning",
+        display_name=PowerManagerTags.about_to_sleep_warning_text,
         hidden=PowerManagerTags.about_to_sleep_warning_hidden,
     )
 
     async def setup(self):
-        # Bind dynamic display names to tags so they update automatically
-        self.is_immune_warning.display_name = PowerManagerTags.immune_warning_text
-        self.about_to_sleep_warning.display_name = PowerManagerTags.about_to_sleep_warning_text
-
         # Set voltage ranges based on 12V/24V config
         if self.config.is_12v:
             self.system_voltage.ranges = [
@@ -110,18 +109,6 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
 
 def export():
     """Export the base UI schema. Runtime setup() will publish the full dynamic schema."""
-    instance = PowerManagerUI(None, None, None)
-    fp = Path(__file__).parents[2] / "doover_config.json"
-
-    if fp.exists():
-        data = json.loads(fp.read_text())
-    else:
-        data = {}
-
-    schema = instance.to_schema(resolve_config=False)
-    try:
-        data["solar_power_management"]["ui_schema"] = schema
-    except KeyError:
-        data["solar_power_management"] = {"ui_schema": schema}
-
-    fp.write_text(json.dumps(data, indent=4))
+    PowerManagerUI(None, None, None).export(
+        Path(__file__).parents[2] / "doover_config.json", "solar_power_management"
+    )

@@ -4,6 +4,7 @@ import time
 from datetime import timedelta, datetime
 
 from pydoover.docker import Application, run_app
+from pydoover.models import ConnectionConfig, ConnectionType as DooverConnectionType
 from pydoover.ui import handler
 from pydoover.utils import apply_async_kalman_filter
 
@@ -63,7 +64,7 @@ class PowerManager(Application):
             self.config.sleep_time_threshold_lookup, key=lambda x: x[0]
         ):
             if self.last_voltage <= voltage:
-                log.info(f"Sleep time determined from config: {sleep_time} seconds")
+                log.info(f"Sleep time determined from config: {sleep_time} minutes")
                 return sleep_time * 60
 
     def get_min_awake_time(self) -> int:
@@ -91,6 +92,35 @@ class PowerManager(Application):
 
         return int(time.time() - self.start_time)
 
+    async def publish_connection_config(
+        self,
+        sleep_time: int | None = None,
+        time_till_sleep: int | None = None,
+    ) -> None:
+        """Publish the device's connection config to the doover_connection channel."""
+        if sleep_time is not None and time_till_sleep is not None:
+            next_wake_at_ms = int((time.time() + time_till_sleep + sleep_time) * 1000)
+            offline_after = (time_till_sleep + sleep_time) * 5
+        else:
+            next_wake_at_ms = None
+            offline_after = None
+
+        config = ConnectionConfig(
+            connection_type=DooverConnectionType.periodic_continuous,
+            expected_interval=sleep_time,
+            offline_after=offline_after,
+            sleep_time=sleep_time,
+            next_wake_time=next_wake_at_ms,
+        )
+        payload = {"config": config.to_dict()}
+        try:
+            await self.update_channel_aggregate(
+                "doover_connection", payload, max_age_secs=-1
+            )
+            await self.create_message("doover_connection", payload)
+        except Exception as e:
+            log.error(f"Error publishing doover_connection config: {e}")
+
     async def maybe_schedule_sleep(self, sleep_time: int, time_till_sleep: int = 20):
         if self.scheduled_goto_sleep_time is not None:
             if self.time_until_sleep is not None:
@@ -98,11 +128,6 @@ class PowerManager(Application):
 
             ## Already scheduled to sleep, so just return.
             return
-
-        ## Do a preliminary update of the connection info
-        self.ui.connection_info.connection_period = sleep_time
-        self.ui.connection_info.next_connection = time_till_sleep + sleep_time
-        self.ui.connection_info.offline_after = (time_till_sleep + sleep_time) * 5
 
         if self.awake_time < (self.get_min_awake_time() - time_till_sleep):
             time_till_sleep = self.get_min_awake_time() - self.awake_time
@@ -133,15 +158,15 @@ class PowerManager(Application):
         self.scheduled_goto_sleep_time = time.time() + time_till_sleep
         self.scheduled_sleep_time = sleep_time
 
-        self.ui.connection_info.connection_period = sleep_time
-        self.ui.connection_info.next_connection = time_till_sleep + sleep_time
-        self.ui.connection_info.offline_after = (time_till_sleep + sleep_time) * 5
+        await self.publish_connection_config(sleep_time, time_till_sleep)
 
     @property
     def time_until_sleep(self) -> int | None:
         if self.scheduled_goto_sleep_time is None:
             return None
-        result = int(self.scheduled_goto_sleep_time - time.time() + self.shutdown_process_time)
+        result = int(
+            self.scheduled_goto_sleep_time - time.time() + self.shutdown_process_time
+        )
         return max(result, 0)
 
     @property
@@ -232,6 +257,11 @@ class PowerManager(Application):
 
         ## schedule the next startup
         await self.schedule_next_startup()
+
+        # Publish final connection config so the cloud knows when we'll be back.
+        await self.publish_connection_config(
+            self.scheduled_sleep_time, shutdown_grace_period
+        )
 
         ## Put the system to sleep
         log.info(f"Scheduling shutdown to occur in {shutdown_grace_period} seconds...")
@@ -326,6 +356,10 @@ class PowerManager(Application):
             else:
                 break
 
+        # Announce connection type up-front so the cloud knows this is a periodic
+        # device even before we schedule a sleep. Timings are filled in later.
+        await self.publish_connection_config(self.get_sleep_time())
+
     async def main_loop(self):
         await self.maybe_reset_soft_watchdog()
         await self.assess_power()
@@ -406,7 +440,6 @@ class PowerManager(Application):
     async def on_enable_immunity(self, ctx, value):
         log.info("Immunity for 30 mins triggered")
         await self.platform_iface.set_immunity_seconds(30 * 60)
-        await ctx.set_value(None)
 
     @property
     def is_battery_low(self) -> bool:

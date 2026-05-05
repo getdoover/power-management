@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydoover>=1.0.0a10",
+    "pydoover>=1.0.0a11",
     "victron-ble",
     "bleak==0.22.3",
 ]

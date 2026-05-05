@@ -21,6 +21,3 @@ class PowerManagerTags(Tags):
     immune_warning_text = Tag("string", default="Device in Immunity Mode")
     about_to_sleep_warning_hidden = Tag("boolean", default=True)
     about_to_sleep_warning_text = Tag("string", default="Device is about to sleep")
-
-    # App display
-    app_display_name = Tag("string", default="Power & Battery")

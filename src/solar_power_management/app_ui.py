@@ -54,7 +54,7 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
 
     system_temperature = ui.NumericVariable(
         "Temperature",
-        units="(\u00b0C)",
+        units="\u00b0C",
         value=PowerManagerTags.system_temperature,
         precision=1,
     )

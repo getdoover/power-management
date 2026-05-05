@@ -98,17 +98,20 @@ class PowerManagerConfig(config.Schema):
         "Sleep Time Thresholds",
         element=SleepTimeThresholds("Sleep Time Thresholds"),
         description="Only used if the profile is 'Custom'. Custom thresholds for sleep times",
+        advanced=True,
     )
     min_awake_time_thresholds = config.Array(
         "Min Awake Time Thresholds",
         element=AwakeTimeThresholds("Awake Time Thresholds"),
         description="Only used if the profile is 'Custom'. Custom thresholds for minimum awake times",
+        advanced=True,
     )
     override_shutdown_permission_mins = config.Integer(
         "Override Shutdown Permission in Minutes",
         default=60,
         minimum=10,
         maximum=1440,
+        advanced=True,
     )
     victron_configs = config.Array(
         "Victron Configs",

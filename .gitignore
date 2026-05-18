@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+dashboard-widget/node_modules
+dashboard-widget/assets
+packages_export
+package.zip
+requirements.txt

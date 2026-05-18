@@ -390,5 +390,242 @@
                 }
             }
         }
+    },
+    "solar_power_dashboard": {
+        "name": "solar_power_dashboard",
+        "display_name": "Solar Power Dashboard",
+        "type": "PRO",
+        "visibility": "COR",
+        "allow_many": false,
+        "description": "Fleet dashboard for devices running Solar Power Management - online / offline / nearly-offline status, power-management fault alerts, and projected time-to-offline from each device's battery-voltage trajectory.",
+        "long_description": "README.md",
+        "depends_on": [],
+        "owner_org": "36a22e32-ab81-4a39-b400-869d532a052d",
+        "owner_org_id": null,
+        "handler": "src.solar_power_dashboard.handler",
+        "lambda_config": {
+            "Environment": {},
+            "Runtime": "python3.13",
+            "Timeout": 300,
+            "Handler": "src.solar_power_dashboard.handler",
+            "MemorySize": 128,
+            "Architectures": [
+                "arm64"
+            ]
+        },
+        "image_name": null,
+        "organisation_id": null,
+        "code_repo_id": null,
+        "repo_branch": "main",
+        "staging_config": {
+            "organisation_id": null,
+            "lambda_config": {
+                "Environment": {
+                    "Variables": {
+                        "DOOVER_DATA_ENDPOINT": "https://data.staging.udoover.com/api"
+                    }
+                },
+                "Runtime": "python3.13",
+                "Timeout": 300,
+                "Handler": "src.solar_power_dashboard.handler",
+                "MemorySize": 128,
+                "Architectures": [
+                    "arm64"
+                ]
+            }
+        },
+        "export_config_command": "export-config-dashboard",
+        "export_ui_command": "export-ui-dashboard",
+        "build_widget_command": "npm --prefix dashboard-widget run build",
+        "widget": "dashboard-widget/assets/SolarPowerDashboardWidget.js",
+        "run_command": null,
+        "lambda_arn": null,
+        "id": 179144882034606351,
+        "key": null,
+        "config_schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "",
+            "title": "$default",
+            "type": "object",
+            "properties": {
+                "dv_proc_extended_permissions": {
+                    "title": "Devices",
+                    "x-name": "dv_proc_extended_permissions",
+                    "x-hidden": false,
+                    "type": "object",
+                    "x-required": true,
+                    "description": "Give Permission to access devices.",
+                    "x-position": 0,
+                    "properties": {
+                        "devices": {
+                            "title": "Devices",
+                            "x-name": "devices",
+                            "x-hidden": false,
+                            "type": "array",
+                            "x-required": true,
+                            "description": "List of devices to grant extended permissions to.",
+                            "x-position": 1,
+                            "items": {
+                                "title": "Device",
+                                "x-name": "device",
+                                "x-hidden": false,
+                                "format": "doover-resource-device",
+                                "type": "string",
+                                "x-required": true,
+                                "description": "Device ID",
+                                "pattern": "\\d+"
+                            }
+                        },
+                        "groups": {
+                            "title": "Groups",
+                            "x-name": "groups",
+                            "x-hidden": false,
+                            "type": "array",
+                            "x-required": true,
+                            "description": "List of groups to grant permissions to.",
+                            "x-position": 2,
+                            "items": {
+                                "title": "Group",
+                                "x-name": "group",
+                                "x-hidden": false,
+                                "format": "doover-resource-group",
+                                "type": "string",
+                                "x-required": true,
+                                "description": "Group ID",
+                                "pattern": "\\d+"
+                            }
+                        },
+                        "apps_installed": {
+                            "title": "Apps Installed",
+                            "x-name": "apps_installed",
+                            "x-hidden": false,
+                            "type": "array",
+                            "x-required": true,
+                            "description": "Permission will be given to any devices which have any of the apps listed installed.",
+                            "x-position": 3,
+                            "items": {
+                                "title": "Application",
+                                "x-name": "application",
+                                "x-hidden": false,
+                                "format": "doover-resource-application",
+                                "type": "string",
+                                "x-required": true,
+                                "description": "Application"
+                            }
+                        },
+                        "all_devices": {
+                            "title": "All Devices",
+                            "x-name": "all_devices",
+                            "x-hidden": false,
+                            "type": [
+                                "boolean",
+                                "null"
+                            ],
+                            "x-required": false,
+                            "description": "Permission will be given for all devices in this organisation. This is a very far-reaching permission to grant!",
+                            "default": false,
+                            "x-position": 4
+                        }
+                    },
+                    "additionalElements": true,
+                    "required": [
+                        "devices",
+                        "groups",
+                        "apps_installed"
+                    ],
+                    "x-collapsible": true,
+                    "x-defaultCollapsed": false,
+                    "x-extraDeviceFields": [
+                        "type__name",
+                        "type__config__battery_voltage_tag",
+                        "solution_installs__display_name",
+                        "group__id",
+                        "id",
+                        "display_name"
+                    ]
+                },
+                "dormant_after_days": {
+                    "title": "Dormant After (Days)",
+                    "x-name": "dormant_after_days",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "A device offline for at least this many days is shown as 'Dormant'.",
+                    "default": 30,
+                    "x-position": 1,
+                    "minimum": 1
+                },
+                "dv_app_position": {
+                    "title": "Position",
+                    "x-name": "dv_app_position",
+                    "x-hidden": true,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Position of Application in UI Structure. Smaller numbers are closer to the top.",
+                    "default": 100,
+                    "x-position": 2,
+                    "minimum": 0
+                },
+                "ignored_groups": {
+                    "title": "Ignored Groups",
+                    "x-name": "ignored_groups",
+                    "x-hidden": false,
+                    "type": "array",
+                    "x-required": true,
+                    "description": "Any devices in these groups will be hidden. Useful for testing or unallocated groups where you otherwise want to include all devices. Does not support hierarchical nesting - you must provide direct parent groups.",
+                    "x-position": 3,
+                    "items": {
+                        "title": "Group",
+                        "x-name": "group",
+                        "x-hidden": false,
+                        "format": "doover-resource-group",
+                        "type": "string",
+                        "x-required": true,
+                        "description": "Group ID",
+                        "pattern": "\\d+"
+                    }
+                }
+            },
+            "additionalElements": true,
+            "required": [
+                "dv_proc_extended_permissions",
+                "ignored_groups"
+            ]
+        },
+        "ui_schema": {
+            "displayString": "$config.app().APP_DISPLAY_NAME",
+            "hidden": "$config.app().hidden:boolean:false:boolean:false",
+            "position": "$config.app().dv_app_position:number:100",
+            "icon": null,
+            "colour": null,
+            "defaultOpen": true,
+            "type": "uiApplication",
+            "name": "$config.app().APP_KEY",
+            "children": {
+                "SolarPowerDashboard": {
+                    "name": "SolarPowerDashboard",
+                    "type": "uiRemoteComponent",
+                    "displayString": "Solar Power Dashboard",
+                    "showActivity": true,
+                    "componentUrl": "$config.app().dv_widget_url",
+                    "position": 51,
+                    "hidden": false,
+                    "children": {},
+                    "scope": "SolarPowerDashboardWidget",
+                    "module": "./SolarPowerDashboardWidget",
+                    "app_key": "$config.app().APP_KEY"
+                }
+            }
+        },
+        "container_registry_profile_id": null,
+        "build_args": null,
+        "icon_url": null,
+        "banner_url": null
     }
 }

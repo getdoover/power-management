@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydoover>=1.0.0a11",
+    "pydoover>=1.0.0",
     "victron-ble",
     "bleak==0.22.3",
 ]
@@ -14,10 +14,15 @@ dependencies = [
 doover-app-run = "solar_power_management:main"
 export-config = "solar_power_management.app_config:export"
 export-ui = "solar_power_management.app_ui:export"
+export-config-dashboard = "solar_power_dashboard.app_config:export"
+export-ui-dashboard = "solar_power_dashboard.app_ui:export"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/solar_power_management", "src/solar_power_dashboard"]
 
 [dependency-groups]
 dev = [
@@ -29,6 +34,3 @@ dev = [
     "pytest-asyncio>=0.26.0",
     "requests>=2.32.3",
 ]
-
-[tool.uv.sources]
-pydoover = { git = "https://github.com/getdoover/pydoover" }

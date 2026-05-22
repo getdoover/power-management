@@ -162,7 +162,7 @@ type TagValuesAggregate = Record<string, Record<string, unknown> | undefined>;
 /**
  * Shape of the bits of `deployment_config` we care about — the dashboard
  * app's own block, where its configured options (dormant_after_days,
- * default_flat_battery_horizon_days, ignored_groups) live alongside the
+ * flat_battery_horizon_days, ignored_groups) live alongside the
  * platform-injected `DEVICE_MAP`.
  */
 interface DashboardDeploymentConfig {
@@ -172,7 +172,7 @@ interface DashboardDeploymentConfig {
       dormant_after_days?: number | null;
       /** Fleet-wide fallback for the flat-battery projection horizon (days),
        *  used when a device type doesn't declare its own. */
-      default_flat_battery_horizon_days?: number | null;
+      flat_battery_horizon_days?: number | string | null;
       /** Group ids (as strings, per pydoover's `GroupsConfig` schema) whose
        *  devices should be hidden from the dashboard entirely. The runtime
        *  key is `ignored_groups` (pydoover sanitises "Ignored Groups" into
@@ -226,7 +226,6 @@ interface DeviceRow {
   temperature: number | null;
   chargeState: string | null;
   chargeCurrent: number | null;
-  lowBattWarningSent: boolean;
   lastSeenMs: number | null;
   conn: ConnectionAggregate["config"] | null;
   connState: ConnState;
@@ -249,6 +248,17 @@ interface DeviceRow {
 // ---------------------------------------------------------------------------
 function num(v: unknown): number | null {
   return typeof v === "number" && isFinite(v) ? v : null;
+}
+
+/** Like `num`, but also coerces numeric strings — config values (e.g. a device
+ *  type's `flat_battery_horizon_days`) sometimes arrive as strings like "7". */
+function numLoose(v: unknown): number | null {
+  if (typeof v === "number") return isFinite(v) ? v : null;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 /** Best human-readable name for a device entry: display_name → name → id. */
@@ -1092,7 +1102,7 @@ function DeviceTableRow({ d, full, compact, onOpenDetail }: { d: DeviceRow; full
   return (
     <tr className="border-b transition-colors hover:bg-muted/40 cursor-pointer" onClick={() => onOpenDetail(d)}>
       <td className="p-2 align-middle text-center">
-        <span className={cn("font-medium", !full && "mx-auto block max-w-[9rem] truncate")} title={d.displayName}>
+        <span className={cn("font-medium", !full && "mx-auto block max-w-[18rem] truncate")} title={d.displayName}>
           {d.displayName}
         </span>
       </td>
@@ -1570,7 +1580,6 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
               </CollapsibleSection>
             )}
 
-            {d.lowBattWarningSent && <span className="text-destructive font-medium text-[0.6875rem]">A low-battery notification has been sent for this device.</span>}
           </div>
         )}
       </DialogContent>
@@ -1770,7 +1779,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
   // Fleet-wide fallback for the flat-battery projection horizon; device types
   // can override it with their own `flat_battery_horizon_days`.
   const defaultHorizonDays = useMemo(() => {
-    const d = num(deploymentConfig?.applications?.[dashboardAppKey]?.default_flat_battery_horizon_days);
+    const d = numLoose(deploymentConfig?.applications?.[dashboardAppKey]?.flat_battery_horizon_days);
     return Math.max(1, d ?? DEFAULT_AT_RISK_HORIZON_DAYS);
   }, [deploymentConfig, dashboardAppKey]);
 
@@ -1869,7 +1878,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       const band = is24v ? BANDS.v24 : BANDS.v12;
 
       // Per-device "nearly offline" horizon: device-type override, else dashboard default.
-      const typeHorizonDays = num(dev.type?.config?.flat_battery_horizon_days);
+      const typeHorizonDays = numLoose(dev.type?.config?.flat_battery_horizon_days);
       const atRiskHorizonHours = Math.max(1, typeHorizonDays ?? defaultHorizonDays) * 24;
 
       const connAgg = connAggs[dev.id];
@@ -1897,15 +1906,16 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       else historyStatus = "ok";
 
       // ---- power-management fault detection ----
+      // We use the dashboard's own voltage assessment ("low voltage" against the
+      // critical band) rather than the device's `low_battery_warning_sent` flag,
+      // which is redundant and can disagree when a device's alarm is customised.
       const chargeStateRaw = typeof pmTags.charge_state === "string" ? pmTags.charge_state : null;
-      const lowBattWarningSent = pmTags.low_battery_warning_sent === true;
       const issues: string[] = [];
       if (connState !== "offline" && !voltagePath) issues.push("device type not configured");
       else if (connState !== "offline" && voltage == null) issues.push("no battery voltage");
       if (voltage != null && (voltage < band.plausibleMin || voltage > band.plausibleMax || voltage <= 1))
         issues.push("implausible voltage");
-      if (voltage != null && voltage <= band.critical) issues.push("critically low voltage");
-      if (lowBattWarningSent) issues.push("low-battery warning");
+      if (voltage != null && voltage <= band.critical) issues.push("low voltage");
       if (chargeStateRaw && BAD_CHARGE_STATES.includes(chargeStateRaw.toLowerCase()))
         issues.push("charger fault");
       if (connState !== "offline" && charging?.notCharging) issues.push("not charging");
@@ -1916,7 +1926,6 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       let severity: Severity;
       const batteryCritical =
         (voltage != null && voltage <= band.critical) ||
-        lowBattWarningSent ||
         (trend?.projectedHoursToCutoff != null && trend.projectedHoursToCutoff <= atRiskHorizonHours);
       const longSilent = lastSeenMs != null && now - lastSeenMs >= dormantAfterMs;
       if (connState === "offline" && longSilent) severity = "dormant";
@@ -1932,7 +1941,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       else if (issues.includes("device type not configured") || issues.includes("no battery voltage") || issues.includes("implausible voltage"))
         urgencyHours = -1;
       else if (trend?.projectedHoursToCutoff != null) urgencyHours = trend.projectedHoursToCutoff;
-      else if (lowBattWarningSent || (voltage != null && voltage <= band.critical)) urgencyHours = 6;
+      else if (voltage != null && voltage <= band.critical) urgencyHours = 6;
       else if (connState === "overdue") urgencyHours = 12;
       else if (charging?.notCharging) urgencyHours = 36;
       else if (voltage != null && voltage <= band.low) urgencyHours = 24 * 7;
@@ -1961,7 +1970,6 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
         temperature: num(pmTags.system_temperature),
         chargeState: chargeStateRaw,
         chargeCurrent: num(pmTags.charge_current),
-        lowBattWarningSent,
         lastSeenMs,
         conn,
         connState,

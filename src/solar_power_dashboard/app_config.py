@@ -35,7 +35,7 @@ class SolarPowerDashboardConfig(config.Schema):
         description="A device offline for at least this many days is shown as 'Dormant'.",
     )
 
-    default_flat_battery_horizon_days = config.Integer(
+    flat_battery_horizon_days = config.Integer(
         "Flat Battery Horizon (Days)",
         default=30,
         minimum=1,

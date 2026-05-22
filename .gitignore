@@ -19,6 +19,11 @@ lib64/
 parts/
 sdist/
 var/
+
+# The Python `lib/` rule above also matches the dashboard widget's frontend
+# source dir — keep that tracked (the widget imports ./lib/connection).
+!dashboard-widget/src/lib/
+!dashboard-widget/src/lib/**
 wheels/
 share/python-wheels/
 *.egg-info/

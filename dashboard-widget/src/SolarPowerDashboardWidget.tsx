@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router";
 
@@ -15,7 +15,7 @@ import {
   type DeviceMapEntry,
 } from "doover-js/react";
 import { extractSnowflakeId, generateSnowflakeIdAtTime } from "doover-js";
-import { useQueries } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -42,6 +42,7 @@ import {
   Maximize2,
   Moon,
   Plug,
+  Search,
   Sun,
   TriangleAlert,
   Unplug,
@@ -55,6 +56,16 @@ import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent } from "./components/ui/card";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 import {
   classifyState,
   lastSeenMs as computeLastSeenMs,
@@ -76,9 +87,12 @@ dayjs.extend(localizedFormat);
 // Connection-state classification (online / overdue / offline) is delegated to
 // `./lib/connection`, which mirrors the platform's `connection_sync.rs` rule.
 // ---------------------------------------------------------------------------
-const HISTORY_DAYS = 30; // window of battery-voltage history pulled for the trend / flat-battery projection
+const FLEET_HISTORY_DAYS = 7; // dashboard list: a single 7-day batch window — one read covers the whole fleet (the batch messages endpoint caps the window at 7 days)
+const DETAIL_HISTORY_DAYS = 30; // detail dialog: per-device getTimeseries accepts a >7-day window when BOTH bounds are given
 const HISTORY_LIMIT = 1499; // cap on points per timeseries call (API requires < 1500)
-const HISTORY_MAX_PAGES = 4; // walk up to this many newest-first pages to cover the 30-day window for chatty devices
+const DETAIL_MAX_PAGES = 4; // page forward (advancing `after`) for chatty devices that hit the 1499 cap
+const FLEET_AGENT_MSG_LIMIT = 500; // per-agent message cap in the batched fleet fetch
+const MULTI_AGENT_MSG_CHUNK = 250; // getMultiAgentMessages isn't auto-chunked — keep URLs under CloudFront's 8 KB cap
 const DEFAULT_AT_RISK_HORIZON_DAYS = 30; // projected-to-flat within this window → "at risk"; overridable per device type / dashboard config
 const MIN_TREND_SPAN_HOURS = 1; // need at least this much spread before we'll draw a trend
 const MIN_PROJECT_SPAN_HOURS = 18; // ...and at least this much before we'll project to a cutoff off the raw slope
@@ -138,6 +152,8 @@ interface SolarDeviceEntry extends DeviceMapEntry {
       flat_battery_horizon_days?: number | null;
     } | null;
   } | null;
+  // `solution_installs` is inherited from DeviceMapEntry (each carries a
+  // `display_name`) — used for the solution filter.
 }
 
 /** Per-device `tag_values` aggregate shape: `{ <app_key>: { <tag_name>: value } }`. */
@@ -200,6 +216,8 @@ interface DeviceRow {
   name: string;
   displayName: string;
   deviceTypeName: string | null;
+  /** `solution_installs[].display_name`, deduped — empty if the device has none. */
+  solutionNames: string[];
   /** Dotted path declared by the device type, e.g. ``"solar_power_management_1.system_voltage"``. Null when the type isn't configured. */
   voltagePath: string | null;
   /** First segment of `voltagePath` — the PM app key on this device (e.g. ``"solar_power_management_1"``). */
@@ -430,6 +448,110 @@ function computeCharging(points: { t: number; v: number }[], now: number, band: 
   return { days, consecutiveNotCharged, notCharging, lastChargedDay };
 }
 
+// ---------------------------------------------------------------------------
+// History fetching
+// ---------------------------------------------------------------------------
+type VoltagePoint = { t: number; v: number };
+
+/**
+ * Batch-fetch recent battery-voltage history for the whole fleet in as few
+ * reads as possible (for the dashboard list). Uses the multi-agent messages
+ * endpoint — chunked at MULTI_AGENT_MSG_CHUNK agents to stay under CloudFront's
+ * URL cap — over a single window, projecting `tag_values` to the PM subtrees via
+ * `field_name`. Returns ascending points keyed by agent id.
+ */
+async function fetchFleetVoltageHistory(
+  client: ReturnType<typeof useDooverClient>,
+  devices: { id: string; voltagePath: string | null }[],
+  pmKeys: string[],
+  afterCursor: string,
+  beforeCursor: string,
+): Promise<Record<string, VoltagePoint[]>> {
+  const out: Record<string, VoltagePoint[]> = {};
+  const pathById: Record<string, string> = {};
+  for (const d of devices) {
+    out[d.id] = [];
+    if (d.voltagePath) pathById[d.id] = d.voltagePath;
+  }
+  const ids = devices.filter((d) => d.voltagePath).map((d) => d.id);
+  if (ids.length === 0) return out;
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += MULTI_AGENT_MSG_CHUNK) chunks.push(ids.slice(i, i + MULTI_AGENT_MSG_CHUNK));
+
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const resp = await client.agents.getMultiAgentMessages("tag_values", {
+        agent_id: chunk,
+        after: afterCursor,
+        before: beforeCursor,
+        agent_message_limit: FLEET_AGENT_MSG_LIMIT,
+        field_name: pmKeys,
+      });
+      for (const m of resp.results ?? []) {
+        const id = (m.channel as { agent_id?: string } | undefined)?.agent_id;
+        if (!id || !(id in out)) continue;
+        const v = resolveDottedNumber((m as { data?: unknown }).data, pathById[id]);
+        const t = typeof m.timestamp === "number" ? m.timestamp : null;
+        if (v == null || t == null) continue;
+        out[id].push({ t, v });
+      }
+    }),
+  );
+  for (const id of Object.keys(out)) out[id].sort((a, b) => a.t - b.t);
+  return out;
+}
+
+/**
+ * Per-device voltage history for the detail dialog, over `days`. Unlike the
+ * batch messages endpoint (capped at a 7-day window), single-agent getTimeseries
+ * accepts a wider window when BOTH bounds are given — results come oldest-first
+ * capped at `limit`, so we page forward by advancing `after` for chatty devices.
+ */
+async function fetchDeviceVoltageHistory(
+  client: ReturnType<typeof useDooverClient>,
+  agentId: string,
+  voltagePath: string,
+  days: number,
+): Promise<VoltagePoint[]> {
+  const out: VoltagePoint[] = [];
+  const before = generateSnowflakeIdAtTime(dayjs().add(2, "minute"));
+  const cutoffMs = dayjs().subtract(days, "day").valueOf();
+  let after = generateSnowflakeIdAtTime(dayjs().subtract(days, "day"));
+  for (let page = 0; page < DETAIL_MAX_PAGES; page++) {
+    const series = await client.messages.getTimeseries(agentId, "tag_values", {
+      field_name: [voltagePath],
+      after,
+      before,
+      limit: HISTORY_LIMIT,
+    });
+    const results = series.results ?? [];
+    if (results.length === 0) break;
+    let newestId: string | null = null;
+    let newestTs: number | null = null;
+    for (const r of results) {
+      const v = extractVoltageFromSeriesValue((r as { value?: unknown }).value, voltagePath);
+      let ts: number | null = null;
+      try {
+        ts = extractSnowflakeId(String((r as { message_id?: string }).message_id)).timestamp;
+      } catch {
+        ts = null;
+      }
+      if (ts != null && (newestTs == null || ts > newestTs)) {
+        newestTs = ts;
+        newestId = (r as { message_id?: string }).message_id ?? null;
+      }
+      if (v == null || ts == null || ts < cutoffMs) continue;
+      out.push({ t: ts, v });
+    }
+    if (results.length < HISTORY_LIMIT) break;
+    if (newestId == null) break;
+    after = String(newestId);
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+
 const ONLINE_RECENT_MS = 5 * 60_000; // heard from it within this → it's up right now
 
 /**
@@ -479,56 +601,58 @@ function NextOnlineCell({ d }: { d: DeviceRow }) {
 // devices are expected to be silent, so they rank below active issues.
 const SEVERITY_RANK: Record<Severity, number> = { offline: 4, atRisk: 3, watch: 2, dormant: 1, ok: 0 };
 
-function statusBadge(d: DeviceRow) {
+function statusBadge(d: DeviceRow, truncate = false) {
+  let variant: "destructive" | "warning" | "muted" | "success";
+  let icon: ReactNode;
+  let label: string;
+  let title: string | undefined;
   switch (d.severity) {
     case "offline":
-      return (
-        <Badge variant="destructive">
-          <WifiOff /> Offline
-        </Badge>
-      );
+      variant = "destructive";
+      icon = <WifiOff />;
+      label = "Offline";
+      break;
     case "atRisk":
-      return (
-        <Badge variant="warning">
-          <TriangleAlert /> Nearly Offline
-        </Badge>
-      );
+      variant = "warning";
+      icon = <TriangleAlert />;
+      label = "Nearly Offline";
+      break;
     case "watch":
       // Surface "not charging" by name rather than the generic "Watch" when
       // that's the reason — it's the most actionable watch-level signal.
-      if (d.charging?.notCharging)
-        return (
-          <Badge
-            variant="warning"
-            title={`No daytime charge for ${d.charging.consecutiveNotCharged} day${d.charging.consecutiveNotCharged === 1 ? "" : "s"} running — solar charging may have stopped`}
-          >
-            <Unplug /> Not charging
-          </Badge>
-        );
-      return (
-        <Badge variant="warning">
-          <AlertTriangle /> Watch
-        </Badge>
-      );
+      if (d.charging?.notCharging) {
+        variant = "warning";
+        icon = <Unplug />;
+        label = "Not charging";
+        title = `No daytime charge for ${d.charging.consecutiveNotCharged} day${d.charging.consecutiveNotCharged === 1 ? "" : "s"} running — solar charging may have stopped`;
+      } else {
+        variant = "warning";
+        icon = <AlertTriangle />;
+        label = "Watch";
+      }
+      break;
     case "dormant":
-      return (
-        <Badge variant="muted">
-          <Moon /> Dormant
-        </Badge>
-      );
+      variant = "muted";
+      icon = <Moon />;
+      label = "Dormant";
+      break;
     default:
-      if (d.connState === "unknown")
-        return (
-          <Badge variant="muted">
-            <Wifi /> Unknown
-          </Badge>
-        );
-      return (
-        <Badge variant="success">
-          <Wifi /> Online
-        </Badge>
-      );
+      if (d.connState === "unknown") {
+        variant = "muted";
+        icon = <Wifi />;
+        label = "Unknown";
+      } else {
+        variant = "success";
+        icon = <Wifi />;
+        label = "Online";
+      }
   }
+  return (
+    <Badge variant={variant} title={title ?? label} className={cn(truncate && "max-w-[7.5rem]")}>
+      {icon}
+      <span className={cn(truncate && "min-w-0 truncate")}>{label}</span>
+    </Badge>
+  );
 }
 
 function batteryIcon(d: DeviceRow) {
@@ -777,6 +901,156 @@ function SortHeader({
 }
 
 // ---------------------------------------------------------------------------
+// Filtering — device type / solution dropdown + free-text search
+// ---------------------------------------------------------------------------
+const CATEGORY_FILTER_ALL = "All Devices";
+type CategoryFilterValue = { kind: "type" | "solution"; name: string } | null;
+
+/** True on phone-width viewports. Used to bump filter controls to a 16px font /
+ *  taller touch target — iOS Safari zooms the page when focusing any input
+ *  with a font < 16 px, so the search box must grow on phones. */
+function useIsNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const onChange = () => setNarrow(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
+/**
+ * Combined device-type + solution filter, one Select with grouped sections.
+ * State is a `{ kind, name } | null` tuple; the round-trip through base-ui's
+ * string-only `value` (encoded `type:<name>` / `solution:<name>`) is contained
+ * here, split on the first `:` so names containing `:` are safe.
+ */
+function CategoryFilter({
+  types,
+  solutions,
+  value,
+  onChange,
+  large,
+}: {
+  types: string[];
+  solutions: string[];
+  value: CategoryFilterValue;
+  onChange: (v: CategoryFilterValue) => void;
+  large?: boolean;
+}) {
+  if (types.length === 0 && solutions.length === 0) return null;
+  const encoded = value ? `${value.kind}:${value.name}` : CATEGORY_FILTER_ALL;
+  return (
+    <Select
+      value={encoded}
+      onValueChange={(v) => {
+        if (typeof v !== "string" || v === CATEGORY_FILTER_ALL) return onChange(null);
+        const i = v.indexOf(":");
+        if (i < 0) return onChange(null);
+        const kind = v.slice(0, i);
+        if (kind !== "type" && kind !== "solution") return onChange(null);
+        onChange({ kind, name: v.slice(i + 1) });
+      }}
+    >
+      <SelectTrigger size={large ? "lg" : "sm"} className="max-w-64" aria-label="Filter by device type or solution">
+        <SelectValue>{value ? value.name : CATEGORY_FILTER_ALL}</SelectValue>
+      </SelectTrigger>
+      <SelectContent align="start" className="w-fit min-w-(--anchor-width) max-w-[min(24rem,calc(100vw-2rem))]">
+        <SelectItem value={CATEGORY_FILTER_ALL}>{CATEGORY_FILTER_ALL}</SelectItem>
+        {types.length > 0 && (
+          <SelectGroup>
+            <SelectSeparator />
+            <SelectLabel>Device Types</SelectLabel>
+            {types.map((t) => (
+              <SelectItem key={`type:${t}`} value={`type:${t}`}>
+                {t}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        {solutions.length > 0 && (
+          <SelectGroup>
+            <SelectSeparator />
+            <SelectLabel>Solutions</SelectLabel>
+            {solutions.map((s) => (
+              <SelectItem key={`solution:${s}`} value={`solution:${s}`}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Free-text search input with a clear (×) button once non-empty. On phones the
+ *  input grows to a 16px font / taller shell so iOS Safari doesn't zoom in on focus. */
+function SearchBox({ value, onChange, large }: { value: string; onChange: (v: string) => void; large?: boolean }) {
+  return (
+    <div className="relative inline-flex items-center">
+      <Search className={cn("absolute text-muted-foreground pointer-events-none", large ? "left-2.5 size-4" : "left-2 size-3.5")} />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Search..."
+        aria-label="Search devices by name"
+        className={cn(
+          "border-input bg-input/20 dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/30 placeholder:text-muted-foreground rounded-md border outline-none focus-visible:ring-[2px] [&::-webkit-search-cancel-button]:hidden",
+          large ? "h-9 w-44 pl-8 pr-7 text-[16px]" : "h-7 w-44 pl-7 pr-6 text-xs",
+        )}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Clear search"
+          className={cn(
+            "absolute inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            large ? "right-1.5 size-5" : "right-1 size-4",
+          )}
+        >
+          <X className={large ? "size-3.5" : "size-3"} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface FilterState {
+  types: string[];
+  solutions: string[];
+  categoryFilter: CategoryFilterValue;
+  onCategoryChange: (v: CategoryFilterValue) => void;
+  searchQuery: string;
+  onSearchChange: (v: string) => void;
+}
+
+function FilterControls({ types, solutions, categoryFilter, onCategoryChange, searchQuery, onSearchChange }: FilterState) {
+  const narrow = useIsNarrow();
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      <CategoryFilter types={types} solutions={solutions} value={categoryFilter} onChange={onCategoryChange} large={narrow} />
+      <SearchBox value={searchQuery} onChange={onSearchChange} large={narrow} />
+    </div>
+  );
+}
+
+/** Apply the active category + search filters to a row list. */
+function applyFilters(rows: DeviceRow[], categoryFilter: CategoryFilterValue, searchQuery: string): DeviceRow[] {
+  let out = rows;
+  if (categoryFilter?.kind === "type") out = out.filter((r) => r.deviceTypeName === categoryFilter.name);
+  else if (categoryFilter?.kind === "solution") out = out.filter((r) => r.solutionNames.includes(categoryFilter.name));
+  const q = searchQuery.trim().toLowerCase();
+  if (q) out = out.filter((r) => r.displayName.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Row + table
 // ---------------------------------------------------------------------------
 function EtaSubLine({ d }: { d: DeviceRow }) {
@@ -795,15 +1069,36 @@ function EtaSubLine({ d }: { d: DeviceRow }) {
   );
 }
 
-function DeviceTableRow({ d, full, onOpenDetail }: { d: DeviceRow; full: boolean; onOpenDetail: (d: DeviceRow) => void }) {
+function DeviceTableRow({ d, full, compact, onOpenDetail }: { d: DeviceRow; full: boolean; compact: boolean; onOpenDetail: (d: DeviceRow) => void }) {
+  // Phone layout: Status (with ETA) on the left, then a truncated device name —
+  // no battery column. Mirrors the connectivity dashboard's compact rows.
+  if (compact) {
+    return (
+      <tr className="border-b transition-colors hover:bg-muted/40 cursor-pointer" onClick={() => onOpenDetail(d)}>
+        <td className="w-24 p-2 align-middle text-center">
+          <div className="inline-flex flex-col items-center gap-0.5 leading-tight">
+            {statusBadge(d, true)}
+            <EtaSubLine d={d} />
+          </div>
+        </td>
+        <td className="p-2 align-middle">
+          <span className="block max-w-[12rem] truncate font-medium" title={d.displayName}>
+            {d.displayName}
+          </span>
+        </td>
+      </tr>
+    );
+  }
   return (
     <tr className="border-b transition-colors hover:bg-muted/40 cursor-pointer" onClick={() => onOpenDetail(d)}>
-      <td className="p-2 align-middle whitespace-nowrap text-center">
-        <span className="font-medium">{d.displayName}</span>
+      <td className="p-2 align-middle text-center">
+        <span className={cn("font-medium", !full && "mx-auto block max-w-[9rem] truncate")} title={d.displayName}>
+          {d.displayName}
+        </span>
       </td>
       <td className="p-2 align-middle whitespace-nowrap text-center">
         <div className="inline-flex flex-col items-center gap-0.5 leading-tight">
-          {statusBadge(d)}
+          {statusBadge(d, !full)}
           {!full && <EtaSubLine d={d} />}
         </div>
       </td>
@@ -850,6 +1145,7 @@ function DeviceTableRow({ d, full, onOpenDetail }: { d: DeviceRow; full: boolean
 function DeviceTable({
   rows,
   full,
+  compact = false,
   sortKey,
   sortDir,
   onSort,
@@ -857,29 +1153,39 @@ function DeviceTable({
 }: {
   rows: DeviceRow[];
   full: boolean;
+  compact?: boolean;
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (k: SortKey) => void;
   onOpenDetail: (d: DeviceRow) => void;
 }) {
-  const colCount = full ? 7 : 3;
+  const colCount = compact ? 2 : full ? 7 : 3;
   return (
     <table className="w-full caption-bottom text-xs">
       <thead className="[&_tr]:border-b">
         <tr className="border-b">
-          <SortHeader label="Device" sortKey="displayName" current={sortKey} dir={sortDir} onSort={onSort} />
-          {full ? (
-            <SortHeader label="Status" sortKey="status" current={sortKey} dir={sortDir} onSort={onSort} />
-          ) : (
-            <SortHeader label="Status / ETA" sortKey="priority" current={sortKey} dir={sortDir} onSort={onSort} />
-          )}
-          <SortHeader label="Battery" sortKey="voltage" current={sortKey} dir={sortDir} onSort={onSort} />
-          {full && (
+          {compact ? (
             <>
-              <SortHeader label="Projected Offline" sortKey="projected" current={sortKey} dir={sortDir} onSort={onSort} />
-              <SortHeader label="Last Seen" sortKey="lastSeen" current={sortKey} dir={sortDir} onSort={onSort} />
-              <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Charger</th>
-              <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Issues</th>
+              <SortHeader label="Status" sortKey="priority" current={sortKey} dir={sortDir} onSort={onSort} className="w-24" />
+              <SortHeader label="Device" sortKey="displayName" current={sortKey} dir={sortDir} onSort={onSort} />
+            </>
+          ) : (
+            <>
+              <SortHeader label="Device" sortKey="displayName" current={sortKey} dir={sortDir} onSort={onSort} />
+              {full ? (
+                <SortHeader label="Status" sortKey="status" current={sortKey} dir={sortDir} onSort={onSort} />
+              ) : (
+                <SortHeader label="Status" sortKey="priority" current={sortKey} dir={sortDir} onSort={onSort} />
+              )}
+              <SortHeader label="Battery" sortKey="voltage" current={sortKey} dir={sortDir} onSort={onSort} />
+              {full && (
+                <>
+                  <SortHeader label="Projected Offline" sortKey="projected" current={sortKey} dir={sortDir} onSort={onSort} />
+                  <SortHeader label="Last Seen" sortKey="lastSeen" current={sortKey} dir={sortDir} onSort={onSort} />
+                  <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Charger</th>
+                  <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Issues</th>
+                </>
+              )}
             </>
           )}
         </tr>
@@ -893,7 +1199,7 @@ function DeviceTable({
             </td>
           </tr>
         ) : (
-          rows.map((d) => <DeviceTableRow key={d.id} d={d} full={full} onOpenDetail={onOpenDetail} />)
+          rows.map((d) => <DeviceTableRow key={d.id} d={d} full={full} compact={compact} onOpenDetail={onOpenDetail} />)
         )}
       </tbody>
     </table>
@@ -967,11 +1273,9 @@ const VOLT_RANGES: { days: number; label: string }[] = [
   { days: 30, label: "30d" },
 ];
 
-function VoltageChart({ d, rangeDays }: { d: DeviceRow; rangeDays: number }) {
-  const trend = d.trend;
+function VoltageChart({ trend, band, rangeDays }: { trend: TrendInfo; band: typeof BANDS.v12; rangeDays: number }) {
   const now = useMemo(() => Date.now(), []);
   const chartData = useMemo(() => {
-    if (!trend) return [] as { t: number; v?: number | null; dmin?: number | null; proj?: number | null }[];
     const map = new Map<number, { t: number; v?: number | null; dmin?: number | null; proj?: number | null }>();
     const at = (t: number) => {
       let e = map.get(t);
@@ -987,13 +1291,12 @@ function VoltageChart({ d, rangeDays }: { d: DeviceRow; rangeDays: number }) {
       // anchor the projection at the latest daily minimum, run it out to the cutoff
       at(trend.lastMs).proj = trend.latestDailyMin;
       const endT = now + trend.projectedHoursToCutoff * 3_600_000;
-      at(endT).proj = d.band.cutoff;
+      at(endT).proj = band.cutoff;
     }
     return [...map.values()].sort((a, b) => a.t - b.t);
-  }, [trend, d.band.cutoff, now]);
+  }, [trend, band.cutoff, now]);
 
   const yDomain = useMemo<[number, number]>(() => {
-    if (!trend) return [0, 1];
     let lo = Infinity;
     let hi = -Infinity;
     for (const r of chartData) {
@@ -1004,23 +1307,21 @@ function VoltageChart({ d, rangeDays }: { d: DeviceRow; rangeDays: number }) {
         }
       }
     }
-    lo = Math.min(lo, d.band.cutoff);
-    hi = Math.max(hi, d.band.low);
+    lo = Math.min(lo, band.cutoff);
+    hi = Math.max(hi, band.low);
     if (!isFinite(lo) || !isFinite(hi)) return [0, 1];
     const pad = Math.max(0.2, (hi - lo) * 0.08);
     return [Number((lo - pad).toFixed(2)), Number((hi + pad).toFixed(2))];
-  }, [chartData, trend, d.band]);
+  }, [chartData, band]);
 
   // The range picker controls only the chart's view window — the projection is
-  // always computed from the full 30-day daily-minimum history (see computeTrend),
-  // so zooming in here never weakens the prediction. The right edge reaches toward
-  // the projected flat point, but no further than the selected window, to stay readable.
+  // computed from the full 30-day daily-minimum history, so zooming in here never
+  // weakens the prediction. The right edge reaches toward the projected flat
+  // point, but no further than the selected window, to stay readable.
   const rangeMs = rangeDays * DAY_MS;
   const windowStart = now - rangeMs;
-  const projEnd = trend?.projectedHoursToCutoff != null ? now + trend.projectedHoursToCutoff * 3_600_000 : null;
+  const projEnd = trend.projectedHoursToCutoff != null ? now + trend.projectedHoursToCutoff * 3_600_000 : null;
   const windowEnd = projEnd != null ? Math.min(projEnd, now + rangeMs) : now;
-
-  if (!trend) return null;
 
   return (
     <ResponsiveContainer width="100%" height={210}>
@@ -1047,13 +1348,13 @@ function VoltageChart({ d, rangeDays }: { d: DeviceRow; rangeDays: number }) {
         />
         <Tooltip content={<ChartTooltip />} isAnimationActive={false} />
         <ReferenceLine
-          y={d.band.cutoff}
+          y={band.cutoff}
           stroke="var(--destructive)"
           strokeDasharray="4 4"
           strokeWidth={1}
-          label={{ value: `flat ${d.band.cutoff.toFixed(1)}V`, position: "insideBottomRight", fontSize: 9, fill: "var(--destructive)" }}
+          label={{ value: `flat ${band.cutoff.toFixed(1)}V`, position: "insideBottomRight", fontSize: 9, fill: "var(--destructive)" }}
         />
-        <ReferenceLine y={d.band.low} stroke="#d97706" strokeDasharray="2 4" strokeWidth={1} />
+        <ReferenceLine y={band.low} stroke="#d97706" strokeDasharray="2 4" strokeWidth={1} />
         <Line dataKey="v" type="monotone" stroke="var(--primary)" strokeWidth={1.5} dot={false} connectNulls isAnimationActive={false} name="Voltage" />
         <Line dataKey="dmin" stroke="var(--muted-foreground)" strokeWidth={0} dot={{ r: 2, fill: "var(--muted-foreground)" }} connectNulls={false} isAnimationActive={false} name="Daily min" />
         <Line dataKey="proj" type="linear" stroke="var(--destructive)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={false} name="Projection" />
@@ -1062,9 +1363,9 @@ function VoltageChart({ d, rangeDays }: { d: DeviceRow; rangeDays: number }) {
   );
 }
 
-function projectionSummary(d: DeviceRow): string {
+function projectionSummary(d: DeviceRow, trend: TrendInfo | null): string {
   if (d.connState === "offline") return d.lastSeenMs ? `Offline since ${dayjs(d.lastSeenMs).format("ddd D MMM")}` : "Offline";
-  const t = d.trend;
+  const t = trend;
   if (!t) return "Not enough history yet";
   if (t.projectedHoursToCutoff == null) {
     const drain = t.dailyMinSlopePerDay ?? t.slopePerDay;
@@ -1079,6 +1380,30 @@ function projectionSummary(d: DeviceRow): string {
 function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null; onClose: () => void }) {
   const d = device;
   const [rangeDays, setRangeDays] = useState(7);
+  const client = useDooverClient();
+
+  // The dashboard list only fetches a cheap 7-day window; the detail view pulls
+  // the full 30 days for this one device (lazily, on open) so the flat-battery
+  // projection here is as accurate as possible.
+  const detailQuery = useQuery({
+    queryKey: ["spd-detail-volt", d?.id ?? "", d?.voltagePath ?? "", DETAIL_HISTORY_DAYS],
+    enabled: d != null && !!d.voltagePath,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    queryFn: () => fetchDeviceVoltageHistory(client, d!.id, d!.voltagePath as string, DETAIL_HISTORY_DAYS),
+  });
+  // Prefer the 30-day detail history; fall back to the row's 7-day trend while it loads.
+  const trend = useMemo(
+    () => (d?.voltagePath && detailQuery.data ? computeTrend(detailQuery.data, d.band.cutoff) : null) ?? d?.trend ?? null,
+    [detailQuery.data, d],
+  );
+  const charging = useMemo(
+    () => (d?.voltagePath && detailQuery.data ? computeCharging(detailQuery.data, Date.now(), d.band) : null) ?? d?.charging ?? null,
+    [detailQuery.data, d],
+  );
+
   return (
     <Dialog open={d != null} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent initialFocus={false} className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1109,7 +1434,7 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
               </Button>
             </div>
 
-            {d.trend ? (
+            {trend ? (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-end gap-1">
                   {VOLT_RANGES.map((r) => (
@@ -1123,25 +1448,23 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
                     </Button>
                   ))}
                 </div>
-                <VoltageChart d={d} rangeDays={rangeDays} />
+                <VoltageChart trend={trend} band={d.band} rangeDays={rangeDays} />
               </div>
             ) : (
               <div className="rounded-md border border-border bg-muted/30 px-3 py-6 text-center text-muted-foreground">
-                {d.historyStatus === "loading"
+                {detailQuery.isLoading
                   ? "Loading voltage history…"
-                  : d.historyStatus === "error"
+                  : detailQuery.isError
                     ? "Couldn't load voltage history."
-                    : d.historyStatus === "short"
-                      ? `Building trend — ${d.historyPointCount} points so far, need a longer span.`
-                      : "No voltage history yet."}
+                    : "No voltage history yet."}
               </div>
             )}
 
             {/* Charging health — did the battery cycle up into charge each day? */}
-            {d.charging && d.charging.days.length > 0 && (
+            {charging && charging.days.length > 0 && (
               <div className="flex flex-col items-center gap-2 border-t border-border pt-2">
                 <span className="text-xs font-medium inline-flex items-center gap-1.5">
-                  {d.charging.notCharging ? (
+                  {charging.notCharging ? (
                     <Unplug className="size-4 text-amber-600 dark:text-amber-400" />
                   ) : (
                     <Sun className="size-4 text-green-600 dark:text-green-400" />
@@ -1152,7 +1475,7 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
                   Each day's peak rise above its low — green charged (≥{CHARGE_RISE_V} V rise or ≥{d.band.floatV.toFixed(1)} V peak), amber didn't.
                 </span>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {d.charging.days.slice(-10).map((day) => {
+                  {charging.days.slice(-10).map((day) => {
                     const riseV = day.max - day.min;
                     return (
                       <div key={day.d} className="flex flex-col items-center gap-1">
@@ -1171,9 +1494,9 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
                     );
                   })}
                 </div>
-                {d.charging.notCharging && (
+                {charging.notCharging && (
                   <span className="text-[0.6875rem] text-amber-700 dark:text-amber-400 font-medium text-center">
-                    No daytime charge for {d.charging.consecutiveNotCharged} day{d.charging.consecutiveNotCharged === 1 ? "" : "s"} running — solar input may have failed.
+                    No daytime charge for {charging.consecutiveNotCharged} day{charging.consecutiveNotCharged === 1 ? "" : "s"} running — solar input may have failed.
                   </span>
                 )}
               </div>
@@ -1218,29 +1541,29 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
             </CollapsibleSection>
 
             {/* Trend + projection calculations (collapsed by default) */}
-            {d.trend && (
+            {trend && (
               <CollapsibleSection title="Trend & projection">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
                   <StatItem label="Raw trend">
-                    <span className="tabular-nums">{d.trend.slopePerDay >= 0 ? "+" : ""}{d.trend.slopePerDay.toFixed(3)} V/day</span>
+                    <span className="tabular-nums">{trend.slopePerDay >= 0 ? "+" : ""}{trend.slopePerDay.toFixed(3)} V/day</span>
                   </StatItem>
                   <StatItem label="Daily-min trend">
-                    {d.trend.dailyMinSlopePerDay != null ? (
-                      <span className="tabular-nums">{d.trend.dailyMinSlopePerDay >= 0 ? "+" : ""}{d.trend.dailyMinSlopePerDay.toFixed(3)} V/day</span>
+                    {trend.dailyMinSlopePerDay != null ? (
+                      <span className="tabular-nums">{trend.dailyMinSlopePerDay >= 0 ? "+" : ""}{trend.dailyMinSlopePerDay.toFixed(3)} V/day</span>
                     ) : (
                       <span className="text-muted-foreground">need ≥2 days</span>
                     )}
                   </StatItem>
                   <StatItem label="History">
-                    {spanLabel(d.trend.spanHours)} · {d.trend.nPoints} pts
+                    {spanLabel(trend.spanHours)} · {trend.nPoints} pts
                   </StatItem>
                   <StatItem label="Projection basis">
-                    {d.trend.projectionBasis === "daily-min" ? "daily minimum" : d.trend.projectionBasis === "raw" ? "raw slope" : "—"}
+                    {trend.projectionBasis === "daily-min" ? "daily minimum" : trend.projectionBasis === "raw" ? "raw slope" : "—"}
                   </StatItem>
                   <StatItem label="At-risk horizon">{Math.round(d.atRiskHorizonHours / 24)} days</StatItem>
                   <StatItem label="Flat-battery prediction" className="col-span-2 sm:col-span-3">
-                    <span className={cn(d.trend.projectedHoursToCutoff != null && d.trend.projectedHoursToCutoff <= d.atRiskHorizonHours ? "text-amber-600 dark:text-amber-400 font-medium" : "")}>
-                      {projectionSummary(d)}
+                    <span className={cn(trend.projectedHoursToCutoff != null && trend.projectedHoursToCutoff <= d.atRiskHorizonHours ? "text-amber-600 dark:text-amber-400 font-medium" : "")}>
+                      {projectionSummary(d, trend)}
                     </span>
                   </StatItem>
                 </div>
@@ -1320,6 +1643,7 @@ function FullscreenDialog({
   sortDir,
   onSort,
   onOpenDetail,
+  filterState,
 }: {
   rows: DeviceRow[];
   onClose: () => void;
@@ -1327,6 +1651,7 @@ function FullscreenDialog({
   sortDir: SortDir;
   onSort: (k: SortKey) => void;
   onOpenDetail: (d: DeviceRow) => void;
+  filterState: FilterState;
 }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -1348,6 +1673,7 @@ function FullscreenDialog({
         </button>
       </div>
       <div className="overflow-auto p-4">
+        <FilterControls {...filterState} />
         <SummaryCards rows={rows} />
         <DeviceTable rows={rows} full sortKey={sortKey} sortDir={sortDir} onSort={onSort} onOpenDetail={onOpenDetail} />
       </div>
@@ -1378,13 +1704,13 @@ function HelpDialog() {
         <dl className="flex flex-col gap-3">
           <div>
             <dt className="font-medium text-foreground">Status</dt>
-            <dd className="text-muted-foreground">
-              <span className="text-foreground">Online</span> healthy ·{" "}
-              <span className="text-foreground">Watch</span> a non-critical issue (low-ish battery, charger fault, bad data) ·{" "}
-              <span className="text-foreground">Not charging</span> no daytime charge for 3+ days ·{" "}
-              <span className="text-foreground">Nearly Offline</span> critically low, low-battery alarm sent, or projected flat within its horizon ·{" "}
-              <span className="text-foreground">Offline</span> silent past its expected check-in ·{" "}
-              <span className="text-foreground">Dormant</span> offline 30+ days.
+            <dd className="text-muted-foreground flex flex-col gap-0.5">
+              <span><span className="text-foreground font-medium">Online</span> — healthy</span>
+              <span><span className="text-foreground font-medium">Watch</span> — a non-critical issue (low-ish battery, charger fault, bad data)</span>
+              <span><span className="text-foreground font-medium">Not charging</span> — no daytime charge for 3+ days</span>
+              <span><span className="text-foreground font-medium">Nearly Offline</span> — critically low, low-battery alarm sent, or projected flat within its horizon</span>
+              <span><span className="text-foreground font-medium">Offline</span> — silent past its expected check-in</span>
+              <span><span className="text-foreground font-medium">Dormant</span> — offline 30+ days</span>
             </dd>
           </div>
           <div>
@@ -1501,73 +1827,39 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
     deviceIds,
   );
 
-  // 3. battery-voltage history per device (for the trend / projection / charging)
-  // doover-data returns oldest-first (capped at `limit`) when *both* before+after
-  // are given — so for a chatty device that would hand back the ~1499 OLDEST
-  // points in the window. Instead we ask only with `before` (newest-first) and
-  // walk back page-by-page (up to HISTORY_MAX_PAGES) until we cover the
-  // HISTORY_DAYS window, trimming to that window client-side.
-  const untilCursor = useMemo(() => generateSnowflakeIdAtTime(dayjs().add(2, "minute")), []);
-  const cutoffMs = useMemo(() => dayjs().subtract(HISTORY_DAYS, "day").valueOf(), []);
-  const histResults = useQueries({
-    queries: devices.map((d) => {
-      const voltagePath = typeof d.type?.config?.battery_voltage_tag === "string" ? d.type.config.battery_voltage_tag : null;
-      return {
-        queryKey: ["spd-volt-history", d.id, voltagePath, untilCursor, HISTORY_DAYS] as const,
-        enabled: !!d.id && !!voltagePath,
-        staleTime: 5 * 60_000,
-        gcTime: 15 * 60_000,
-        refetchOnWindowFocus: false,
-        retry: 1,
-        queryFn: async () => {
-          const path = voltagePath as string;
-          const out: { t: number; v: number }[] = [];
-          let beforeCursor = untilCursor;
-          for (let page = 0; page < HISTORY_MAX_PAGES; page++) {
-            const series = await client.messages.getTimeseries(d.id, "tag_values", {
-              field_name: [path],
-              before: beforeCursor,
-              limit: HISTORY_LIMIT,
-            });
-            const results = series.results ?? [];
-            if (results.length === 0) break;
-            let oldestTs: number | null = null;
-            let oldestId: string | number | null = null;
-            for (const r of results) {
-              const v = extractVoltageFromSeriesValue((r as any).value, path);
-              // each result carries its own timestamp; fall back to the snowflake id
-              let ts = connToEpochMs((r as any).timestamp);
-              if (ts == null) {
-                try {
-                  ts = extractSnowflakeId(String((r as any).message_id)).timestamp;
-                } catch {
-                  ts = null;
-                }
-              }
-              if (ts != null && (oldestTs == null || ts < oldestTs)) {
-                oldestTs = ts;
-                oldestId = (r as any).message_id ?? null;
-              }
-              if (v == null || ts == null || ts < cutoffMs) continue;
-              out.push({ t: ts, v });
-            }
-            // Stop once we've drained the page (got everything) or paged past the window.
-            if (results.length < HISTORY_LIMIT) break;
-            if (oldestTs != null && oldestTs < cutoffMs) break;
-            if (oldestId == null) break;
-            beforeCursor = String(oldestId);
-          }
-          out.sort((a, b) => a.t - b.t);
-          return out;
-        },
-      };
-    }),
+  // 3. battery-voltage history for the WHOLE fleet in one batched read (7-day
+  //    window) — this keeps dashboard load to a handful of requests rather than
+  //    one per device. The deeper 30-day per-device history is fetched lazily by
+  //    the detail dialog when a row is opened.
+  // Both cursors derive from one `top` so the batch window is exactly
+  // FLEET_HISTORY_DAYS — the batch messages endpoint rejects windows over 7 days.
+  const fleetTop = useMemo(() => Date.now() + 60_000, []);
+  const fleetBeforeCursor = useMemo(() => generateSnowflakeIdAtTime(fleetTop), [fleetTop]);
+  const fleetAfterCursor = useMemo(() => generateSnowflakeIdAtTime(fleetTop - FLEET_HISTORY_DAYS * DAY_MS), [fleetTop]);
+  const histQuery = useQuery({
+    queryKey: ["spd-fleet-volt", deviceIds.join(","), uniquePmKeys.join(","), fleetAfterCursor],
+    enabled: deviceIds.length > 0,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    queryFn: () =>
+      fetchFleetVoltageHistory(
+        client,
+        devices.map((d) => ({
+          id: d.id,
+          voltagePath: typeof d.type?.config?.battery_voltage_tag === "string" ? d.type.config.battery_voltage_tag : null,
+        })),
+        uniquePmKeys,
+        fleetAfterCursor,
+        fleetBeforeCursor,
+      ),
   });
 
   // 4. assemble the rows
   const rows = useMemo<DeviceRow[]>(() => {
     const now = Date.now();
-    return devices.map((dev, i) => {
+    return devices.map((dev) => {
       const tagAgg = tagAggs[dev.id];
       const voltagePath = typeof dev.type?.config?.battery_voltage_tag === "string" ? dev.type.config.battery_voltage_tag : null;
       const pmKey = pmKeyByDevice[dev.id] ?? null;
@@ -1593,14 +1885,13 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       })();
       const connState = classifyState(lastSeenMs, conn, now, connAgg?.data?.determination);
 
-      const hr = histResults[i];
-      const histPoints = (hr?.data as { t: number; v: number }[] | undefined) ?? [];
+      const histPoints = histQuery.data?.[dev.id] ?? [];
       const trend = voltagePath ? computeTrend(histPoints, band.cutoff) : null;
       const charging = voltagePath ? computeCharging(histPoints, now, band) : null;
       let historyStatus: HistoryStatus;
       if (!voltagePath) historyStatus = "none";
-      else if (hr?.isError) historyStatus = "error";
-      else if (hr?.isPending && hr?.fetchStatus === "fetching") historyStatus = "loading";
+      else if (histQuery.isError) historyStatus = "error";
+      else if (histQuery.isLoading) historyStatus = "loading";
       else if (histPoints.length === 0) historyStatus = "none";
       else if (!trend) historyStatus = "short";
       else historyStatus = "ok";
@@ -1647,11 +1938,23 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       else if (voltage != null && voltage <= band.low) urgencyHours = 24 * 7;
       else urgencyHours = Number.POSITIVE_INFINITY;
 
+      // Dedupe solution display names — a device can sit in several installs.
+      const solutionNames = Array.isArray(dev.solution_installs)
+        ? [
+            ...new Set(
+              dev.solution_installs
+                .map((s) => (typeof s?.display_name === "string" ? s.display_name : null))
+                .filter((n): n is string => !!n),
+            ),
+          ]
+        : [];
+
       return {
         id: dev.id,
         name: typeof dev.name === "string" && dev.name ? dev.name : dev.id,
         displayName: displayNameOf(dev),
         deviceTypeName: typeof dev.type?.name === "string" ? dev.type.name : null,
+        solutionNames,
         voltagePath,
         pmKey,
         voltage,
@@ -1674,7 +1977,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
         urgencyHours,
       };
     });
-  }, [devices, tagAggs, connAggs, histResults, pmKeyByDevice, dormantAfterMs, defaultHorizonDays]);
+  }, [devices, tagAggs, connAggs, histQuery.data, histQuery.isError, histQuery.isLoading, pmKeyByDevice, dormantAfterMs, defaultHorizonDays]);
 
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -1687,6 +1990,42 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
   };
   const sortedRows = useMemo(() => sortRows(rows, sortKey, sortDir), [rows, sortKey, sortDir]);
 
+  // Device-type / solution filter options, derived from the current fleet.
+  const deviceTypeNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rows) if (r.deviceTypeName) s.add(r.deviceTypeName);
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+  const solutionNamesAll = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rows) for (const n of r.solutionNames) s.add(n);
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilterValue>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  // A previously-selected category can disappear (config / permission change) —
+  // fall back to "All Devices" so the trigger doesn't show a stale label.
+  useEffect(() => {
+    if (!categoryFilter) return;
+    const stillThere =
+      categoryFilter.kind === "type"
+        ? deviceTypeNames.includes(categoryFilter.name)
+        : solutionNamesAll.includes(categoryFilter.name);
+    if (!stillThere) setCategoryFilter(null);
+  }, [deviceTypeNames, solutionNamesAll, categoryFilter]);
+  const visibleRows = useMemo(
+    () => applyFilters(sortedRows, categoryFilter, searchQuery),
+    [sortedRows, categoryFilter, searchQuery],
+  );
+  const filterState: FilterState = {
+    types: deviceTypeNames,
+    solutions: solutionNamesAll,
+    categoryFilter,
+    onCategoryChange: setCategoryFilter,
+    searchQuery,
+    onSearchChange: setSearchQuery,
+  };
+
   // keep "x minutes ago" labels fresh
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -1695,13 +2034,38 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
   }, []);
 
   const [fullscreen, setFullscreen] = useState(false);
+  const narrow = useIsNarrow(); // phone-width → compact table (status-first, no battery column)
 
   // Row-click detail dialog. Track the selected id (not the row object) so the
   // dialog keeps showing fresh data as aggregates/history update underneath it.
   const [detailId, setDetailId] = useState<string | null>(null);
-  const detailRow = useMemo(() => sortedRows.find((r) => r.id === detailId) ?? null, [sortedRows, detailId]);
-  const openDetail = (d: DeviceRow) => setDetailId(d.id);
-  const closeDetail = () => setDetailId(null);
+  const detailRow = useMemo(() => rows.find((r) => r.id === detailId) ?? null, [rows, detailId]);
+
+  // Sync the open device into the URL as `?device=<id>` so the view is shareable.
+  // Go through history.replaceState directly (not react-router's setSearchParams)
+  // so the host shell's chrome doesn't re-render mid-open-animation and flicker.
+  const writeDeviceParam = (deviceId: string | null) => {
+    const url = new URL(window.location.href);
+    if (deviceId) url.searchParams.set("device", deviceId);
+    else url.searchParams.delete("device");
+    window.history.replaceState(window.history.state, "", url.toString());
+  };
+  // Deep-link: once rows resolve, open the dialog if `?device=…` names a known device.
+  const deepLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkAppliedRef.current || rows.length === 0) return;
+    const id = new URLSearchParams(window.location.search).get("device");
+    if (id && rows.some((r) => r.id === id)) setDetailId(id);
+    deepLinkAppliedRef.current = true;
+  }, [rows]);
+  const openDetail = (d: DeviceRow) => {
+    setDetailId(d.id);
+    writeDeviceParam(d.id);
+  };
+  const closeDetail = () => {
+    setDetailId(null);
+    writeDeviceParam(null);
+  };
 
   if (cfgLoading || (deviceIds.length > 0 && tagQuery.isLoading)) {
     return <div className="p-4 text-sm text-muted-foreground">Loading devices…</div>;
@@ -1720,17 +2084,19 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
             <Maximize2 className="size-3.5" />
           </button>
         </div>
-        <SummaryCards rows={sortedRows} compact />
-        <DeviceTable rows={sortedRows} full={false} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} onOpenDetail={openDetail} />
+        <FilterControls {...filterState} />
+        <SummaryCards rows={visibleRows} compact />
+        <DeviceTable rows={visibleRows} full={false} compact={narrow} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} onOpenDetail={openDetail} />
       </div>
       {fullscreen && (
         <FullscreenDialog
-          rows={sortedRows}
+          rows={visibleRows}
           onClose={() => setFullscreen(false)}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={handleSort}
           onOpenDetail={openDetail}
+          filterState={filterState}
         />
       )}
       <SolarDeviceDetailDialog device={detailRow} onClose={closeDetail} />

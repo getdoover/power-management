@@ -267,7 +267,8 @@
                     "units": "V",
                     "varType": "float",
                     "currentValue": "$tag.app().system_voltage:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "low_battery_alarm": {
                     "name": "low_battery_alarm",
@@ -304,7 +305,8 @@
                     "units": "A",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_current:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "charge_voltage": {
                     "name": "charge_voltage",
@@ -316,7 +318,8 @@
                     "units": "V",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_voltage:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "charge_power": {
                     "name": "charge_power",
@@ -328,7 +331,8 @@
                     "units": "W",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_power:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "temperature": {
                     "name": "temperature",
@@ -340,7 +344,8 @@
                     "units": "\u00b0C",
                     "varType": "float",
                     "currentValue": "$tag.app().system_temperature:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "online_now": {
                     "name": "online_now",

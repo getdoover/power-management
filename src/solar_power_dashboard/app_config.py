@@ -15,6 +15,12 @@ class SolarPowerDashboardConfig(config.Schema):
         extra_fields=[
             "type__name",
             "type__config__battery_voltage_tag",
+            # Per-device-type override for the "nearly offline" projection horizon
+            # (in days). Slow-draining solar sites can afford ~30 days' warning,
+            # while a Doovit that recharges over ~3 days wants a much tighter
+            # window. Falls back to ``default_flat_battery_horizon_days`` below
+            # when a device type doesn't set it.
+            "type__config__flat_battery_horizon_days",
             "solution_installs__display_name",
             "group__id",
             "id",
@@ -27,6 +33,15 @@ class SolarPowerDashboardConfig(config.Schema):
         default=30,
         minimum=1,
         description="A device offline for at least this many days is shown as 'Dormant'.",
+    )
+
+    default_flat_battery_horizon_days = config.Integer(
+        "Flat Battery Horizon (Days)",
+        default=30,
+        minimum=1,
+        description="When a device's battery is projected to reach flat within this many days "
+                    "it is flagged 'Nearly Offline'. Device types can override this with their own "
+                    "'flat_battery_horizon_days' (e.g. a Doovit that recharges over ~3 days).",
     )
 
     position = config.ApplicationPosition()

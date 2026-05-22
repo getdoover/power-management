@@ -538,6 +538,7 @@
                     "x-extraDeviceFields": [
                         "type__name",
                         "type__config__battery_voltage_tag",
+                        "type__config__flat_battery_horizon_days",
                         "solution_installs__display_name",
                         "group__id",
                         "id",
@@ -558,6 +559,20 @@
                     "x-position": 1,
                     "minimum": 1
                 },
+                "flat_battery_horizon_days": {
+                    "title": "Flat Battery Horizon (Days)",
+                    "x-name": "flat_battery_horizon_days",
+                    "x-hidden": false,
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "When a device's battery is projected to reach flat within this many days it is flagged 'Nearly Offline'. Device types can override this with their own 'flat_battery_horizon_days' (e.g. a Doovit that recharges over ~3 days).",
+                    "default": 30,
+                    "x-position": 2,
+                    "minimum": 1
+                },
                 "dv_app_position": {
                     "title": "Position",
                     "x-name": "dv_app_position",
@@ -569,7 +584,7 @@
                     "x-required": false,
                     "description": "Position of Application in UI Structure. Smaller numbers are closer to the top.",
                     "default": 100,
-                    "x-position": 2,
+                    "x-position": 3,
                     "minimum": 0
                 },
                 "ignored_groups": {
@@ -579,7 +594,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Any devices in these groups will be hidden. Useful for testing or unallocated groups where you otherwise want to include all devices. Does not support hierarchical nesting - you must provide direct parent groups.",
-                    "x-position": 3,
+                    "x-position": 4,
                     "items": {
                         "title": "Group",
                         "x-name": "group",

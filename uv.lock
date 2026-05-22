@@ -840,10 +840,14 @@ wheels = [
 [[package]]
 name = "pydoover"
 version = "1.1.0"
-source = { git = "https://github.com/getdoover/pydoover#e45464640d2f352c5fa1fd1d294df6afcf6b6f10" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/af/41/0ce9784c4d65b9488a23a2e83ff891f2b11216edf1e2897962cac9877ce7/pydoover-1.1.0.tar.gz", hash = "sha256:05b63bc3f7cf2c641171c1273a02dbbfd46d922d338875937ee0db5d7d6f381c", size = 506883, upload-time = "2026-05-18T03:58:25.3Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/98/fae334e890a4e8b484827288ecfbb7619aea4d976dde1bb7e6d8b26b50fa/pydoover-1.1.0-py3-none-any.whl", hash = "sha256:dc98227f824f721fdef022337d75412fd7fbbefc62c89c130855c9eee13a68f0", size = 266335, upload-time = "2026-05-18T03:58:27.001Z" },
 ]
 
 [[package]]
@@ -992,7 +996,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bleak", specifier = "==0.22.3" },
-    { name = "pydoover", git = "https://github.com/getdoover/pydoover" },
+    { name = "pydoover", specifier = ">=1.0.0" },
     { name = "victron-ble" },
 ]
 

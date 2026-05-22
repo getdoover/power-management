@@ -1,5 +1,11 @@
+// Ported from connectivity-monitor's widget (which mirrors customer-site's
+// `button.tsx`) so buttons rendered from this widget look and behave like the
+// rest of the host site — and so we can use base-ui's `render` prop to swap the
+// underlying element (e.g. to a router <Link>) while keeping button styling.
 import * as React from "react";
+import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
+
 import { cn } from "./utils";
 
 const buttonVariants = cva(
@@ -37,21 +43,20 @@ const buttonVariants = cva(
   },
 );
 
-type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>;
+type ButtonProps = ButtonPrimitive.Props & VariantProps<typeof buttonVariants>;
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  ...props
-}: ButtonProps) {
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = "default", size = "default", ...props },
+  ref,
+) {
   return (
-    <button
+    <ButtonPrimitive
+      ref={ref}
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
   );
-}
+});
 
 export { Button, buttonVariants, type ButtonProps };

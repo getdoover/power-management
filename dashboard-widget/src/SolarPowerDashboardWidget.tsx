@@ -12,6 +12,7 @@ import {
   useDeviceMap,
   useDooverClient,
   useMultiAgentAggregates,
+  useMultiAgentChannelMessages,
   type DeviceMapEntry,
 } from "doover-js/react";
 import { extractSnowflakeId, generateSnowflakeIdAtTime } from "doover-js";
@@ -92,7 +93,6 @@ const DETAIL_HISTORY_DAYS = 30; // detail dialog: per-device getTimeseries accep
 const HISTORY_LIMIT = 1499; // cap on points per timeseries call (API requires < 1500)
 const DETAIL_MAX_PAGES = 4; // page forward (advancing `after`) for chatty devices that hit the 1499 cap
 const FLEET_AGENT_MSG_LIMIT = 500; // per-agent message cap in the batched fleet fetch
-const MULTI_AGENT_MSG_CHUNK = 250; // getMultiAgentMessages isn't auto-chunked — keep URLs under CloudFront's 8 KB cap
 const DEFAULT_AT_RISK_HORIZON_DAYS = 30; // projected-to-flat within this window → "at risk"; overridable per device type / dashboard config
 const MIN_TREND_SPAN_HOURS = 1; // need at least this much spread before we'll draw a trend
 const MIN_PROJECT_SPAN_HOURS = 18; // ...and at least this much before we'll project to a cutoff off the raw slope
@@ -462,55 +462,6 @@ function computeCharging(points: { t: number; v: number }[], now: number, band: 
 // History fetching
 // ---------------------------------------------------------------------------
 type VoltagePoint = { t: number; v: number };
-
-/**
- * Batch-fetch recent battery-voltage history for the whole fleet in as few
- * reads as possible (for the dashboard list). Uses the multi-agent messages
- * endpoint — chunked at MULTI_AGENT_MSG_CHUNK agents to stay under CloudFront's
- * URL cap — over a single window, projecting `tag_values` to the PM subtrees via
- * `field_name`. Returns ascending points keyed by agent id.
- */
-async function fetchFleetVoltageHistory(
-  client: ReturnType<typeof useDooverClient>,
-  devices: { id: string; voltagePath: string | null }[],
-  pmKeys: string[],
-  afterCursor: string,
-  beforeCursor: string,
-): Promise<Record<string, VoltagePoint[]>> {
-  const out: Record<string, VoltagePoint[]> = {};
-  const pathById: Record<string, string> = {};
-  for (const d of devices) {
-    out[d.id] = [];
-    if (d.voltagePath) pathById[d.id] = d.voltagePath;
-  }
-  const ids = devices.filter((d) => d.voltagePath).map((d) => d.id);
-  if (ids.length === 0) return out;
-
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += MULTI_AGENT_MSG_CHUNK) chunks.push(ids.slice(i, i + MULTI_AGENT_MSG_CHUNK));
-
-  await Promise.all(
-    chunks.map(async (chunk) => {
-      const resp = await client.agents.getMultiAgentMessages("tag_values", {
-        agent_id: chunk,
-        after: afterCursor,
-        before: beforeCursor,
-        agent_message_limit: FLEET_AGENT_MSG_LIMIT,
-        field_name: pmKeys,
-      });
-      for (const m of resp.results ?? []) {
-        const id = (m.channel as { agent_id?: string } | undefined)?.agent_id;
-        if (!id || !(id in out)) continue;
-        const v = resolveDottedNumber((m as { data?: unknown }).data, pathById[id]);
-        const t = typeof m.timestamp === "number" ? m.timestamp : null;
-        if (v == null || t == null) continue;
-        out[id].push({ t, v });
-      }
-    }),
-  );
-  for (const id of Object.keys(out)) out[id].sort((a, b) => a.t - b.t);
-  return out;
-}
 
 /**
  * Per-device voltage history for the detail dialog, over `days`. Unlike the
@@ -1760,8 +1711,6 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
   const agentId = params?.agentId;
   const dashboardAppKey = uiElement?.app_key ?? "";
 
-  const client = useDooverClient();
-
   // 1. DEVICE_MAP via the typed helper — each entry rides along with the
   //    device type's `type.config.battery_voltage_tag` (a dotted path into
   //    `tag_values`, e.g. ``solar_power_management_1.system_voltage``).
@@ -1842,28 +1791,49 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
   //    the detail dialog when a row is opened.
   // Both cursors derive from one `top` so the batch window is exactly
   // FLEET_HISTORY_DAYS — the batch messages endpoint rejects windows over 7 days.
+  // `liveUpdates: false`: the tag_values aggregate hook above already subscribes
+  // to live updates; we don't want a second WebSocket subscription per device
+  // just to keep this 7-day history list current.
   const fleetTop = useMemo(() => Date.now() + 60_000, []);
   const fleetBeforeCursor = useMemo(() => generateSnowflakeIdAtTime(fleetTop), [fleetTop]);
   const fleetAfterCursor = useMemo(() => generateSnowflakeIdAtTime(fleetTop - FLEET_HISTORY_DAYS * DAY_MS), [fleetTop]);
-  const histQuery = useQuery({
-    queryKey: ["spd-fleet-volt", deviceIds.join(","), uniquePmKeys.join(","), fleetAfterCursor],
-    enabled: deviceIds.length > 0,
-    staleTime: 5 * 60_000,
-    gcTime: 15 * 60_000,
-    refetchOnWindowFocus: false,
-    retry: 1,
-    queryFn: () =>
-      fetchFleetVoltageHistory(
-        client,
-        devices.map((d) => ({
-          id: d.id,
-          voltagePath: typeof d.type?.config?.battery_voltage_tag === "string" ? d.type.config.battery_voltage_tag : null,
-        })),
-        uniquePmKeys,
-        fleetAfterCursor,
-        fleetBeforeCursor,
-      ),
+  const histAgentIds = useMemo(
+    () =>
+      devices
+        .filter((d) => typeof d.type?.config?.battery_voltage_tag === "string")
+        .map((d) => d.id),
+    [devices],
+  );
+  const voltagePathByDevice = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const d of devices) {
+      const p = d.type?.config?.battery_voltage_tag;
+      if (typeof p === "string") m[d.id] = p;
+    }
+    return m;
+  }, [devices]);
+  const histQuery = useMultiAgentChannelMessages<unknown>("tag_values", histAgentIds, {
+    initialBefore: fleetBeforeCursor,
+    after: fleetAfterCursor,
+    agentMessageLimit: FLEET_AGENT_MSG_LIMIT,
+    fields: uniquePmKeys,
+    liveUpdates: false,
   });
+  const historyByAgent = useMemo<Record<string, VoltagePoint[]>>(() => {
+    const out: Record<string, VoltagePoint[]> = {};
+    for (const m of histQuery.messages) {
+      const id = (m.channel as { agent_id?: string } | undefined)?.agent_id;
+      if (!id) continue;
+      const path = voltagePathByDevice[id];
+      if (!path) continue;
+      const v = resolveDottedNumber((m as { data?: unknown }).data, path);
+      const t = typeof m.timestamp === "number" ? m.timestamp : null;
+      if (v == null || t == null) continue;
+      (out[id] ??= []).push({ t, v });
+    }
+    for (const id of Object.keys(out)) out[id].sort((a, b) => a.t - b.t);
+    return out;
+  }, [histQuery.messages, voltagePathByDevice]);
 
   // 4. assemble the rows
   const rows = useMemo<DeviceRow[]>(() => {
@@ -1894,7 +1864,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       })();
       const connState = classifyState(lastSeenMs, conn, now, connAgg?.data?.determination);
 
-      const histPoints = histQuery.data?.[dev.id] ?? [];
+      const histPoints = historyByAgent[dev.id] ?? [];
       const trend = voltagePath ? computeTrend(histPoints, band.cutoff) : null;
       const charging = voltagePath ? computeCharging(histPoints, now, band) : null;
       let historyStatus: HistoryStatus;
@@ -1985,7 +1955,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
         urgencyHours,
       };
     });
-  }, [devices, tagAggs, connAggs, histQuery.data, histQuery.isError, histQuery.isLoading, pmKeyByDevice, dormantAfterMs, defaultHorizonDays]);
+  }, [devices, tagAggs, connAggs, historyByAgent, histQuery.isError, histQuery.isLoading, pmKeyByDevice, dormantAfterMs, defaultHorizonDays]);
 
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("asc");

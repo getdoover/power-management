@@ -113,6 +113,15 @@ class PowerManagerConfig(config.Schema):
         maximum=1440,
         advanced=True,
     )
+    wake_on_voltage = config.Number(
+        "Wake-on Voltage",
+        default=None,
+        minimum=0,
+        maximum=36,
+        description="Input voltage at which the device wakes itself from sleep. "
+        "Leave blank to default to 13.5V for 12V profiles or 27V for 24V profiles.",
+        advanced=True,
+    )
     victron_configs = config.Array(
         "Victron Configs",
         element=VictronConfig("Victron Bluetooth Config"),
@@ -142,6 +151,17 @@ class PowerManagerConfig(config.Schema):
             ]
         else:
             return list(profiles[self.profile.value]["sleep_thresholds"].items())
+
+    @property
+    def wake_on_voltage_value(self) -> float | None:
+        """Effective wake-on voltage to push to the platform.
+
+        Uses the explicit config value if set, otherwise defaults to 13.5V for
+        12V profiles and 27V for 24V profiles.
+        """
+        if self.wake_on_voltage.value is not None:
+            return self.wake_on_voltage.value
+        return 27.0 if self.is_24v else 13.5
 
     @property
     def min_awake_time_threshold_lookup(self) -> list[tuple[float, int]]:

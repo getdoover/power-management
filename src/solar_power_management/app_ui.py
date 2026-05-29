@@ -52,6 +52,13 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
         hidden=PowerManagerTags.victron_hidden,
     )
 
+    system_power = ui.NumericVariable(
+        "System Power",
+        units="W",
+        value=PowerManagerTags.system_power,
+        precision=1,
+    )
+
     system_temperature = ui.NumericVariable(
         "Temperature",
         units="\u00b0C",

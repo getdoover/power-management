@@ -3,16 +3,21 @@ from pydoover.tags import Tag, Tags
 
 class PowerManagerTags(Tags):
     # Core measurements
-    system_voltage = Tag("number", default=None)
-    system_temperature = Tag("number", default=None)
-    is_online = Tag("boolean", default=True)
+    system_voltage = Tag("number", default=None, live=True)
+    system_power = Tag("number", default=None, live=True)
+    system_temperature = Tag("number", default=None, live=True)
+    is_online = Tag("boolean", default=True, live=True)
+
+    # Cursor for sleep-log backfill: epoch ms of the newest snapshot already
+    # written to history, so reboots don't re-post the same points.
+    last_sleep_log_ts = Tag("number", default=0)
 
     # Victron charger
     victron_hidden = Tag("boolean", default=True)
     charge_state = Tag("string", default=None)
-    charge_current = Tag("number", default=None)
-    charge_voltage = Tag("number", default=None)
-    charge_power = Tag("number", default=None)
+    charge_current = Tag("number", default=None, live=True)
+    charge_voltage = Tag("number", default=None, live=True)
+    charge_power = Tag("number", default=None, live=True)
 
     # Warning states
     low_battery_warning_sent = Tag("boolean", default=False)

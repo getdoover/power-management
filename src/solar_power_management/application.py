@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 
 from pydoover.docker import Application, run_app
 from pydoover.models import ConnectionConfig, ConnectionType as DooverConnectionType
@@ -41,8 +41,17 @@ class PowerManager(Application):
                 self.last_voltage_time = time.time()
 
             self.last_temp = await self.get_system_temperature()
+
+            try:
+                power = await self.platform_iface.fetch_system_power()
+            except Exception as e:
+                log.error(f"Error fetching system power: {e}")
+            else:
+                self.last_power = round(power, 2) if power is not None else None
+
             log.info(
-                f"Filtered system voltage: {self.last_voltage}, temp: {self.last_temp}"
+                f"Filtered system voltage: {self.last_voltage}, "
+                f"power: {self.last_power}, temp: {self.last_temp}"
             )
 
     @apply_async_kalman_filter(
@@ -314,6 +323,7 @@ class PowerManager(Application):
         self.last_watchdog_reset_time = None
         self.watchdog_reset_interval_secs = 20
         self.last_voltage = None
+        self.last_power = None
         self.last_temp = None
         self.last_voltage_time = None
         self.voltage_update_interval = 5
@@ -335,6 +345,15 @@ class PowerManager(Application):
         # Show Victron UI elements if devices are configured
         if self.victron_devices:
             await self.tags.victron_hidden.set(False)
+
+        # Push the configured wake-on voltage to the platform (None disables it).
+        # Tolerate older firmware that doesn't implement this.
+        try:
+            await self.platform_iface.set_wake_on_voltage(
+                self.config.wake_on_voltage_value
+            )
+        except Exception as e:
+            log.warning(f"Could not set wake-on voltage: {e}")
 
         # set shutdown_requested for all apps to False.
         log.info("Setting shutdown_requested tag for all apps to False.")
@@ -359,6 +378,54 @@ class PowerManager(Application):
         # Announce connection type up-front so the cloud knows this is a periodic
         # device even before we schedule a sleep. Timings are filled in later.
         await self.publish_connection_config(self.get_sleep_time())
+
+        # Backfill voltage/power history captured while the device was asleep.
+        await self.backfill_sleep_log()
+
+    async def backfill_sleep_log(self):
+        """Backfill voltage/power history from snapshots taken while asleep.
+
+        The platform records system-status snapshots while the compute module is
+        powered off. On boot we read any new ones and write them to history so the
+        graphs aren't blank for the offline period. Fully guarded: if the firmware
+        doesn't support the sleep log, this just logs and returns.
+        """
+        since = int(self.tags.last_sleep_log_ts.value or 0)
+        try:
+            entries = await self.platform_iface.fetch_sleep_log(since=since)
+        except Exception as e:
+            log.info(f"Sleep log unavailable, skipping backfill: {e}")
+            return
+
+        if not entries:
+            return
+
+        points, newest = [], since
+        for entry in entries:
+            ts_ms = int(entry.timestamp)
+            if ts_ms <= since:
+                continue
+            tags = {}
+            if entry.input_voltage:
+                tags["system_voltage"] = round(entry.input_voltage, 2)
+            if entry.system_power:
+                tags["system_power"] = round(entry.system_power, 2)
+            if tags:
+                points.append(
+                    (datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc), tags)
+                )
+            newest = max(newest, ts_ms)
+
+        if points:
+            try:
+                await self.tag_manager.log_history(points)
+            except Exception as e:
+                log.warning(f"Failed to backfill sleep-log history: {e}")
+                return
+
+        if newest > since:
+            await self.tags.last_sleep_log_ts.set(newest)
+        log.info(f"Backfilled {len(points)} sleep-log snapshot(s).")
 
     async def main_loop(self):
         await self.maybe_reset_soft_watchdog()
@@ -387,6 +454,7 @@ class PowerManager(Application):
     async def refresh_ui(self):
         """Update tags which auto-update the UI via tag bindings."""
         await self.tags.system_voltage.set(self.last_voltage)
+        await self.tags.system_power.set(self.last_power)
         await self.tags.system_temperature.set(self.last_temp)
         await self.tags.is_online.set(not self.about_to_shutdown)
 

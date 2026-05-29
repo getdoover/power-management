@@ -171,6 +171,22 @@
                     "minimum": 10,
                     "maximum": 1440
                 },
+                "wakeon_voltage": {
+                    "title": "Wake-on Voltage",
+                    "x-name": "wakeon_voltage",
+                    "x-hidden": false,
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Input voltage at which the device wakes itself from sleep. Leave blank to default to 13.5V for 12V profiles or 27V for 24V profiles.",
+                    "default": null,
+                    "x-position": 4,
+                    "x-advanced": true,
+                    "minimum": 0,
+                    "maximum": 36
+                },
                 "victron_configs": {
                     "title": "Victron Configs",
                     "x-name": "victron_configs",
@@ -178,7 +194,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "The Victron devices to bluetooth to.",
-                    "x-position": 4,
+                    "x-position": 5,
                     "items": {
                         "title": "Victron Bluetooth Config",
                         "x-name": "victron_bluetooth_config",
@@ -230,7 +246,7 @@
                     "x-required": false,
                     "description": "Position of Application in UI Structure. Smaller numbers are closer to the top.",
                     "default": 120,
-                    "x-position": 5,
+                    "x-position": 6,
                     "minimum": 0
                 }
             },
@@ -267,7 +283,8 @@
                     "units": "V",
                     "varType": "float",
                     "currentValue": "$tag.app().system_voltage:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "low_battery_alarm": {
                     "name": "low_battery_alarm",
@@ -304,7 +321,8 @@
                     "units": "A",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_current:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "charge_voltage": {
                     "name": "charge_voltage",
@@ -316,7 +334,8 @@
                     "units": "V",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_voltage:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "charge_power": {
                     "name": "charge_power",
@@ -328,35 +347,51 @@
                     "units": "W",
                     "varType": "float",
                     "currentValue": "$tag.app().charge_power:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
+                },
+                "system_power": {
+                    "name": "system_power",
+                    "type": "uiVariable",
+                    "displayString": "System Power",
+                    "showActivity": true,
+                    "position": 57,
+                    "hidden": false,
+                    "units": "W",
+                    "varType": "float",
+                    "currentValue": "$tag.app().system_power:number:null",
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "temperature": {
                     "name": "temperature",
                     "type": "uiVariable",
                     "displayString": "Temperature",
                     "showActivity": true,
-                    "position": 57,
+                    "position": 58,
                     "hidden": false,
                     "units": "\u00b0C",
                     "varType": "float",
                     "currentValue": "$tag.app().system_temperature:number:null",
-                    "decPrecision": 1
+                    "decPrecision": 1,
+                    "live": true
                 },
                 "online_now": {
                     "name": "online_now",
                     "type": "uiVariable",
                     "displayString": "Online Now",
                     "showActivity": true,
-                    "position": 58,
+                    "position": 59,
                     "hidden": false,
                     "varType": "bool",
-                    "currentValue": "$tag.app().is_online:boolean:true"
+                    "currentValue": "$tag.app().is_online:boolean:true",
+                    "live": true
                 },
                 "enable_immunity": {
                     "name": "enable_immunity",
                     "type": "uiButton",
                     "displayString": "Stay On For 30 Mins",
-                    "position": 59,
+                    "position": 60,
                     "hidden": false,
                     "currentValue": "$cmds.app().enable_immunity",
                     "requiresConfirm": false
@@ -365,7 +400,7 @@
                     "name": "low_battery",
                     "type": "uiWarningIndicator",
                     "displayString": "Low Battery",
-                    "position": 60,
+                    "position": 61,
                     "hidden": "$tag.app().low_batt_warning_hidden:boolean:true",
                     "currentValue": "$cmds.app().low_battery",
                     "can_cancel": true
@@ -374,7 +409,7 @@
                     "name": "is_immune_warning",
                     "type": "uiWarningIndicator",
                     "displayString": "$tag.app().immune_warning_text:string:\"Device in Immunity Mode\"",
-                    "position": 61,
+                    "position": 62,
                     "hidden": "$tag.app().immune_warning_hidden:boolean:true",
                     "currentValue": "$cmds.app().is_immune_warning",
                     "can_cancel": true
@@ -383,7 +418,7 @@
                     "name": "about_to_sleep_warning",
                     "type": "uiWarningIndicator",
                     "displayString": "$tag.app().about_to_sleep_warning_text:string:\"Device is about to sleep\"",
-                    "position": 62,
+                    "position": 63,
                     "hidden": "$tag.app().about_to_sleep_warning_hidden:boolean:true",
                     "currentValue": "$cmds.app().about_to_sleep_warning",
                     "can_cancel": true

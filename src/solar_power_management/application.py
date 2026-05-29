@@ -45,7 +45,7 @@ class PowerManager(Application):
             try:
                 power = await self.platform_iface.fetch_system_power()
             except Exception as e:
-                log.error(f"Error fetching system power: {e}")
+                log.info(f"Error fetching system power: {e}")
             else:
                 self.last_power = round(power, 2) if power is not None else None
 

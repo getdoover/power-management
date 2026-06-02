@@ -539,11 +539,29 @@
                         "type__name",
                         "type__config__battery_voltage_tag",
                         "type__config__flat_battery_horizon_days",
+                        "type__config__power_source",
                         "solution_installs__display_name",
                         "group__id",
                         "id",
                         "display_name"
                     ]
+                },
+                "power_source": {
+                    "enum": [
+                        "Solar + Battery",
+                        "Battery"
+                    ],
+                    "title": "Power Source",
+                    "x-name": "power_source",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Whether the monitored devices are solar-charged or battery-only. Battery-only hides all charging signals (the 'Charger' column, the daily-charge history and the 'Not charging' status), which are irrelevant without a solar input. Device types can override this with their own 'power_source'.",
+                    "default": "Solar + Battery",
+                    "x-position": 1
                 },
                 "dormant_after_days": {
                     "title": "Dormant After (Days)",
@@ -556,7 +574,7 @@
                     "x-required": false,
                     "description": "A device offline for at least this many days is shown as 'Dormant'.",
                     "default": 30,
-                    "x-position": 1,
+                    "x-position": 2,
                     "minimum": 1
                 },
                 "flat_battery_horizon_days": {
@@ -570,7 +588,7 @@
                     "x-required": false,
                     "description": "When a device's battery is projected to reach flat within this many days it is flagged 'Nearly Offline'. Device types can override this with their own 'flat_battery_horizon_days' (e.g. a Doovit that recharges over ~3 days).",
                     "default": 30,
-                    "x-position": 2,
+                    "x-position": 3,
                     "minimum": 1
                 },
                 "dv_app_position": {
@@ -584,7 +602,7 @@
                     "x-required": false,
                     "description": "Position of Application in UI Structure. Smaller numbers are closer to the top.",
                     "default": 100,
-                    "x-position": 3,
+                    "x-position": 4,
                     "minimum": 0
                 },
                 "ignored_groups": {
@@ -594,7 +612,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Any devices in these groups will be hidden. Useful for testing or unallocated groups where you otherwise want to include all devices. Does not support hierarchical nesting - you must provide direct parent groups.",
-                    "x-position": 4,
+                    "x-position": 5,
                     "items": {
                         "title": "Group",
                         "x-name": "group",

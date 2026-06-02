@@ -92,7 +92,8 @@ const FLEET_HISTORY_DAYS = 7; // dashboard list: a single 7-day batch window —
 const DETAIL_HISTORY_DAYS = 30; // detail dialog: per-device getTimeseries accepts a >7-day window when BOTH bounds are given
 const HISTORY_LIMIT = 1499; // cap on points per timeseries call (API requires < 1500)
 const DETAIL_MAX_PAGES = 4; // page forward (advancing `after`) for chatty devices that hit the 1499 cap
-const FLEET_AGENT_MSG_LIMIT = 500; // per-agent message cap in the batched fleet fetch
+const FLEET_AGENT_MSG_LIMIT = 500; // desired per-agent message cap in the batched fleet fetch
+const FLEET_MSG_CEILING = 50_000; // batch endpoint hard cap: agents × agent_message_limit must not exceed this, so the per-agent limit is auto-reduced for large fleets
 const DEFAULT_AT_RISK_HORIZON_DAYS = 30; // projected-to-flat within this window → "at risk"; overridable per device type / dashboard config
 const MIN_TREND_SPAN_HOURS = 1; // need at least this much spread before we'll draw a trend
 const MIN_PROJECT_SPAN_HOURS = 18; // ...and at least this much before we'll project to a cutoff off the raw slope
@@ -111,13 +112,43 @@ const CHARGE_RISE_FRAC = 0.05;
 const NOT_CHARGING_MIN_DAYS = 3;
 const DAY_MS = 86_400_000;
 
-// Per-rail battery voltage bands. 24 V systems are detected by voltage > 17.
-// `floatV` is the lead-acid float setpoint — a peak at/above it means the
-// charger is actively holding the battery up (matches typical 13.6 V / 27.2 V).
+// Per-rail battery voltage bands, auto-selected from the live voltage: above 17 V
+// is a 24 V system, below 8.5 V a 7 V system, otherwise 12 V. The
+// `plausible{Min,Max}` ranges are contiguous so every reading lands in exactly one
+// rail. `floatV` is the charge setpoint — a peak at/above it means the charger is
+// actively holding the battery up (12 V/24 V use the lead-acid float voltage; the
+// 7 V rail uses the top of its "high" band, 7.5 V).
+// The 7 V rail maps the requested bands onto the shared severity thresholds:
+//   5–6 V "very low" → ≤ critical (6.0)   6–6.5 V "low" → ≤ low (6.5)
+//   6.5–7.5 V "good" → ok                  7.5–8 V "high" → ≥ floatV (7.5)
+// NB: a deeply-destroyed 12 V battery reading < 8.5 V would be mis-read as a
+// healthy 7 V rail — acceptable, as such a 12 V battery is already dead.
 const BANDS = {
-  v12: { low: 12.0, critical: 11.4, cutoff: 11.0, floatV: 13.6, plausibleMin: 5, plausibleMax: 17 },
-  v24: { low: 24.0, critical: 22.8, cutoff: 22.0, floatV: 27.2, plausibleMin: 17, plausibleMax: 34 },
+  v7: { nominalV: 7, low: 6.5, critical: 6.0, cutoff: 5.0, floatV: 7.5, plausibleMin: 3.0, plausibleMax: 8.5 },
+  v12: { nominalV: 12, low: 12.0, critical: 11.4, cutoff: 11.0, floatV: 13.6, plausibleMin: 8.5, plausibleMax: 17 },
+  v24: { nominalV: 24, low: 24.0, critical: 22.8, cutoff: 22.0, floatV: 27.2, plausibleMin: 17, plausibleMax: 34 },
 };
+
+// Pick the rail from a representative voltage. Callers pass the history *peak*
+// rather than the instantaneous reading: a battery's charged voltage sits near
+// its rail's nominal+, so the peak discriminates rails even when the battery is
+// currently flat — a deeply-discharged 24 V system reading ~12 V would otherwise
+// be mis-read as a healthy 12 V rail.
+function bandFor(v: number): typeof BANDS.v12 {
+  if (v > BANDS.v12.plausibleMax) return BANDS.v24;
+  if (v < BANDS.v7.plausibleMax) return BANDS.v7;
+  return BANDS.v12;
+}
+
+// "Solar + Battery" devices have a charger we can reason about (charge cycles,
+// "not charging", charger faults); "Battery"-only devices don't, so those signals
+// are suppressed for them. Anything other than an explicit "Battery" reads as
+// solar — including a missing config — so existing dashboards keep their current
+// behaviour. `raw` is the device-type override if present, else the dashboard
+// default.
+function resolveIsSolar(raw: unknown): boolean {
+  return typeof raw === "string" && raw.trim().toLowerCase() === "battery" ? false : true;
+}
 
 const BAD_CHARGE_STATES = ["fault", "error"];
 
@@ -150,6 +181,10 @@ interface SolarDeviceEntry extends DeviceMapEntry {
     config?: {
       battery_voltage_tag?: string | null;
       flat_battery_horizon_days?: number | null;
+      /** Per-device-type override for the dashboard's `power_source` — "Battery"
+       *  or "Solar + Battery". Lets one dashboard mix solar sites with
+       *  battery-only devices. Absent → the dashboard-wide default applies. */
+      power_source?: string | null;
     } | null;
   } | null;
   // `solution_installs` is inherited from DeviceMapEntry (each carries a
@@ -173,6 +208,10 @@ interface DashboardDeploymentConfig {
       /** Fleet-wide fallback for the flat-battery projection horizon (days),
        *  used when a device type doesn't declare its own. */
       flat_battery_horizon_days?: number | string | null;
+      /** Dashboard-wide power source — "Battery" or "Solar + Battery" (default).
+       *  Battery-only suppresses all charging signals. Device types can override
+       *  it per-device with their own `power_source`. */
+      power_source?: string | null;
       /** Group ids (as strings, per pydoover's `GroupsConfig` schema) whose
        *  devices should be hidden from the dashboard entirely. The runtime
        *  key is `ignored_groups` (pydoover sanitises "Ignored Groups" into
@@ -229,8 +268,9 @@ interface DeviceRow {
   lastSeenMs: number | null;
   conn: ConnectionAggregate["config"] | null;
   connState: ConnState;
-  is24v: boolean;
   band: typeof BANDS.v12;
+  /** Solar-charged (`true`) vs battery-only (`false`) — battery-only suppresses all charging signals. */
+  isSolar: boolean;
   trend: TrendInfo | null;
   charging: ChargingInfo | null;
   /** "Nearly offline" projection horizon for this device, in hours (per device type, else dashboard default). */
@@ -800,15 +840,19 @@ function sortValue(d: DeviceRow, key: SortKey): number | string {
     case "status":
       return SEVERITY_RANK[d.severity];
     case "voltage":
-      // normalise 24 V to a 12 V equivalent so mixed fleets sort sensibly
-      return d.voltage == null ? Number.POSITIVE_INFINITY : d.is24v ? d.voltage / 2 : d.voltage;
+      // normalise every rail to a 12 V equivalent so mixed fleets sort sensibly
+      return d.voltage == null ? Number.POSITIVE_INFINITY : (d.voltage * 12) / d.band.nominalV;
     case "lastSeen":
       return d.lastSeenMs == null ? -1 : d.lastSeenMs;
     case "projected":
       return d.connState === "offline" ? -1 : (d.trend?.projectedHoursToCutoff ?? Number.POSITIVE_INFINITY);
     case "priority":
     default:
-      return d.urgencyHours;
+      // Dormant devices are expected to be silent — sink them below everything,
+      // including healthy "ok" devices (which otherwise share an "infinite"
+      // urgency with them and would interleave by name).
+      if (d.severity === "dormant") return Number.POSITIVE_INFINITY;
+      return d.urgencyHours === Number.POSITIVE_INFINITY ? Number.MAX_VALUE : d.urgencyHours;
   }
 }
 
@@ -1030,7 +1074,7 @@ function EtaSubLine({ d }: { d: DeviceRow }) {
   );
 }
 
-function DeviceTableRow({ d, full, compact, onOpenDetail }: { d: DeviceRow; full: boolean; compact: boolean; onOpenDetail: (d: DeviceRow) => void }) {
+function DeviceTableRow({ d, full, compact, showCharger, onOpenDetail }: { d: DeviceRow; full: boolean; compact: boolean; showCharger: boolean; onOpenDetail: (d: DeviceRow) => void }) {
   // Phone layout: Status (with ETA) on the left, then a truncated device name —
   // no battery column. Mirrors the connectivity dashboard's compact rows.
   if (compact) {
@@ -1081,19 +1125,21 @@ function DeviceTableRow({ d, full, compact, onOpenDetail }: { d: DeviceRow; full
               <span className="text-muted-foreground">—</span>
             )}
           </td>
-          <td className="p-2 align-middle whitespace-nowrap text-center">
-            {d.chargeState ? (
-              <span className="inline-flex items-center justify-center gap-1">
-                <Plug className="size-3 text-muted-foreground" />
-                <span className={cn(BAD_CHARGE_STATES.includes(d.chargeState.toLowerCase()) ? "text-destructive" : "text-foreground")}>
-                  {d.chargeState}
+          {showCharger && (
+            <td className="p-2 align-middle whitespace-nowrap text-center">
+              {d.chargeState ? (
+                <span className="inline-flex items-center justify-center gap-1">
+                  <Plug className="size-3 text-muted-foreground" />
+                  <span className={cn(BAD_CHARGE_STATES.includes(d.chargeState.toLowerCase()) ? "text-destructive" : "text-foreground")}>
+                    {d.chargeState}
+                  </span>
+                  {d.chargeCurrent != null && <span className="text-muted-foreground">({d.chargeCurrent.toFixed(1)} A)</span>}
                 </span>
-                {d.chargeCurrent != null && <span className="text-muted-foreground">({d.chargeCurrent.toFixed(1)} A)</span>}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </td>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </td>
+          )}
           <td className="p-2 align-middle text-center">
             <IssuesCell issues={d.issues} />
           </td>
@@ -1120,7 +1166,10 @@ function DeviceTable({
   onSort: (k: SortKey) => void;
   onOpenDetail: (d: DeviceRow) => void;
 }) {
-  const colCount = compact ? 2 : full ? 7 : 3;
+  // Hide the "Charger" column when no device on the dashboard is solar-charged —
+  // it's irrelevant for a battery-only fleet (only shown in the full layout).
+  const showCharger = full && rows.some((r) => r.isSolar);
+  const colCount = compact ? 2 : full ? (showCharger ? 7 : 6) : 3;
   return (
     <table className="w-full caption-bottom text-xs">
       <thead className="[&_tr]:border-b">
@@ -1143,7 +1192,9 @@ function DeviceTable({
                 <>
                   <SortHeader label="Projected Offline" sortKey="projected" current={sortKey} dir={sortDir} onSort={onSort} />
                   <SortHeader label="Last Seen" sortKey="lastSeen" current={sortKey} dir={sortDir} onSort={onSort} />
-                  <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Charger</th>
+                  {showCharger && (
+                    <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Charger</th>
+                  )}
                   <th className="text-foreground h-9 px-2 text-center align-middle font-medium whitespace-nowrap">Issues</th>
                 </>
               )}
@@ -1160,7 +1211,7 @@ function DeviceTable({
             </td>
           </tr>
         ) : (
-          rows.map((d) => <DeviceTableRow key={d.id} d={d} full={full} compact={compact} onOpenDetail={onOpenDetail} />)
+          rows.map((d) => <DeviceTableRow key={d.id} d={d} full={full} compact={compact} showCharger={showCharger} onOpenDetail={onOpenDetail} />)
         )}
       </tbody>
     </table>
@@ -1360,8 +1411,13 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
     () => (d?.voltagePath && detailQuery.data ? computeTrend(detailQuery.data, d.band.cutoff) : null) ?? d?.trend ?? null,
     [detailQuery.data, d],
   );
+  // Battery-only devices have no charging cycle — keep it null so the charging
+  // health section and charger row stay hidden.
   const charging = useMemo(
-    () => (d?.voltagePath && detailQuery.data ? computeCharging(detailQuery.data, Date.now(), d.band) : null) ?? d?.charging ?? null,
+    () =>
+      d?.isSolar
+        ? (d?.voltagePath && detailQuery.data ? computeCharging(detailQuery.data, Date.now(), d.band) : null) ?? d?.charging ?? null
+        : null,
     [detailQuery.data, d],
   );
 
@@ -1466,7 +1522,7 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
             {/* Device details — rail, battery, connection (collapsible, collapsed by default) */}
             <CollapsibleSection title="Details">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
-                <StatItem label="Rail">{d.is24v ? "24 V" : "12 V"} system</StatItem>
+                <StatItem label="Rail">{d.band.nominalV} V system</StatItem>
                 <StatItem label="Battery">
                   {d.voltage != null ? <VoltageCell d={d} /> : <span className="text-muted-foreground">—</span>}
                 </StatItem>
@@ -1482,16 +1538,18 @@ function SolarDeviceDetailDialog({ device, onClose }: { device: DeviceRow | null
                 <StatItem label="Next online">
                   <NextOnlineCell d={d} />
                 </StatItem>
-                <StatItem label="Charger">
-                  {d.chargeState ? (
-                    <span className={cn(BAD_CHARGE_STATES.includes(d.chargeState.toLowerCase()) ? "text-destructive" : "")}>
-                      {d.chargeState}
-                      {d.chargeCurrent != null && <span className="text-muted-foreground"> ({d.chargeCurrent.toFixed(1)} A)</span>}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </StatItem>
+                {d.isSolar && (
+                  <StatItem label="Charger">
+                    {d.chargeState ? (
+                      <span className={cn(BAD_CHARGE_STATES.includes(d.chargeState.toLowerCase()) ? "text-destructive" : "")}>
+                        {d.chargeState}
+                        {d.chargeCurrent != null && <span className="text-muted-foreground"> ({d.chargeCurrent.toFixed(1)} A)</span>}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </StatItem>
+                )}
                 {d.conn?.sleep_time != null && (
                   <StatItem label="Sleep cycle">{sleepCycleLabel(d.conn.sleep_time as number)}</StatItem>
                 )}
@@ -1623,7 +1681,7 @@ function FullscreenDialog({
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold inline-flex items-center gap-2">
-          <Battery className="size-4" /> Solar Power Fleet
+          <Battery className="size-4" /> {rows.some((r) => r.isSolar) ? "Solar Power Fleet" : "Battery Fleet"}
         </h2>
         <button
           onClick={onClose}
@@ -1645,7 +1703,7 @@ function FullscreenDialog({
 // ---------------------------------------------------------------------------
 // Help dialog — explains how the dashboard's numbers are derived.
 // ---------------------------------------------------------------------------
-function HelpDialog() {
+function HelpDialog({ anySolar }: { anySolar: boolean }) {
   return (
     <Dialog>
       <DialogTrigger
@@ -1666,11 +1724,11 @@ function HelpDialog() {
             <dt className="font-medium text-foreground">Status</dt>
             <dd className="text-muted-foreground flex flex-col gap-0.5">
               <span><span className="text-foreground font-medium">Online</span> — healthy</span>
-              <span><span className="text-foreground font-medium">Watch</span> — a non-critical issue (low-ish battery, charger fault, bad data)</span>
-              <span><span className="text-foreground font-medium">Not charging</span> — no daytime charge for 3+ days</span>
+              <span><span className="text-foreground font-medium">Watch</span> — a non-critical issue (low-ish battery{anySolar ? ", charger fault" : ""}, bad data)</span>
+              {anySolar && <span><span className="text-foreground font-medium">Not charging</span> — no daytime charge for 3+ days</span>}
               <span><span className="text-foreground font-medium">Nearly Offline</span> — critically low, low-battery alarm sent, or projected flat within its horizon</span>
               <span><span className="text-foreground font-medium">Offline</span> — silent past its expected check-in</span>
-              <span><span className="text-foreground font-medium">Dormant</span> — offline 30+ days</span>
+              <span><span className="text-foreground font-medium">Dormant</span> — offline 30+ days, or never reported</span>
             </dd>
           </div>
           <div>
@@ -1685,12 +1743,14 @@ function HelpDialog() {
               Takes the lowest voltage per day over the last 30 days, fits a line, and extends it to the flat-battery cutoff (~11 V / 22 V). A device projected to reach that within the at-risk horizon (configurable per device type; default 30 days) is flagged Nearly Offline.
             </dd>
           </div>
-          <div>
-            <dt className="font-medium text-foreground">Not charging</dt>
-            <dd className="text-muted-foreground">
-              A day counts as charged if its peak rose ≥1 V (or 5%) above the day's low, or reached float (~13.6 V / 27.2 V). Three completed days in a row without that ⇒ Not charging.
-            </dd>
-          </div>
+          {anySolar && (
+            <div>
+              <dt className="font-medium text-foreground">Not charging</dt>
+              <dd className="text-muted-foreground">
+                A day counts as charged if its peak rose ≥1 V (or 5%) above the day's low, or reached float (~13.6 V / 27.2 V). Three completed days in a row without that ⇒ Not charging.
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="font-medium text-foreground">Next online</dt>
             <dd className="text-muted-foreground">
@@ -1731,6 +1791,11 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
     const d = numLoose(deploymentConfig?.applications?.[dashboardAppKey]?.flat_battery_horizon_days);
     return Math.max(1, d ?? DEFAULT_AT_RISK_HORIZON_DAYS);
   }, [deploymentConfig, dashboardAppKey]);
+  // Dashboard-wide power source; a device type can override it per-device.
+  const defaultPowerSource = useMemo(
+    () => deploymentConfig?.applications?.[dashboardAppKey]?.power_source ?? null,
+    [deploymentConfig, dashboardAppKey],
+  );
 
   // Devices in any `ignored_groups` group are hidden entirely — applied before
   // we fetch aggregates or history for them. Group ids can be serialised as
@@ -1812,10 +1877,19 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
     }
     return m;
   }, [devices]);
+  // Keep agents × agentMessageLimit under the batch endpoint's ceiling: a large
+  // fleet would otherwise blow past it (e.g. 101 agents × 500 = 50 500 > 50 000).
+  const fleetAgentMsgLimit = useMemo(
+    () =>
+      histAgentIds.length > 0
+        ? Math.max(1, Math.min(FLEET_AGENT_MSG_LIMIT, Math.floor(FLEET_MSG_CEILING / histAgentIds.length)))
+        : FLEET_AGENT_MSG_LIMIT,
+    [histAgentIds.length],
+  );
   const histQuery = useMultiAgentChannelMessages<unknown>("tag_values", histAgentIds, {
     initialBefore: fleetBeforeCursor,
     after: fleetAfterCursor,
-    agentMessageLimit: FLEET_AGENT_MSG_LIMIT,
+    agentMessageLimit: fleetAgentMsgLimit,
     fields: uniquePmKeys,
     liveUpdates: false,
   });
@@ -1844,8 +1918,16 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       const pmKey = pmKeyByDevice[dev.id] ?? null;
       const pmTags: Record<string, unknown> = pmKey && tagAgg?.data ? (tagAgg.data[pmKey] ?? {}) : {};
       const voltage = resolveDottedNumber(tagAgg?.data, voltagePath);
-      const is24v = voltage != null && voltage > BANDS.v12.plausibleMax;
-      const band = is24v ? BANDS.v24 : BANDS.v12;
+      const histPoints = historyByAgent[dev.id] ?? [];
+      // Detect the rail from the history peak (charged voltage ≈ rail nominal+),
+      // falling back to the live aggregate voltage when no history has loaded yet.
+      const railVoltage = histPoints.length ? Math.max(...histPoints.map((p) => p.v)) : voltage;
+      const band = railVoltage == null ? BANDS.v12 : bandFor(railVoltage);
+
+      // Power source: device-type override, else the dashboard-wide default.
+      // Battery-only devices have no charger, so all charging signals are
+      // suppressed for them below.
+      const isSolar = resolveIsSolar(dev.type?.config?.power_source ?? defaultPowerSource);
 
       // Per-device "nearly offline" horizon: device-type override, else dashboard default.
       const typeHorizonDays = numLoose(dev.type?.config?.flat_battery_horizon_days);
@@ -1864,9 +1946,18 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       })();
       const connState = classifyState(lastSeenMs, conn, now, connAgg?.data?.determination);
 
-      const histPoints = historyByAgent[dev.id] ?? [];
+      // Connection recency. A `connState` of "unknown" means the connection
+      // channel gave no determination (e.g. a device that publishes `tag_values`
+      // but no `doover_connection` — or one we've simply lost track of). For those
+      // we fall back to last-seen recency: a long-silent unknown device reads as
+      // offline/dormant, not a live "watch" over missing data.
+      const recentlyHeard = lastSeenMs != null && now - lastSeenMs < ONLINE_RECENT_MS;
+      const offlineish = connState === "offline" || (connState === "unknown" && !recentlyHeard);
+
       const trend = voltagePath ? computeTrend(histPoints, band.cutoff) : null;
-      const charging = voltagePath ? computeCharging(histPoints, now, band) : null;
+      // Charging only makes sense for solar devices — a battery-only device never
+      // "charges" in normal operation, so we don't compute or flag it.
+      const charging = isSolar && voltagePath ? computeCharging(histPoints, now, band) : null;
       let historyStatus: HistoryStatus;
       if (!voltagePath) historyStatus = "none";
       else if (histQuery.isError) historyStatus = "error";
@@ -1881,14 +1972,16 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       // which is redundant and can disagree when a device's alarm is customised.
       const chargeStateRaw = typeof pmTags.charge_state === "string" ? pmTags.charge_state : null;
       const issues: string[] = [];
-      if (connState !== "offline" && !voltagePath) issues.push("device type not configured");
-      else if (connState !== "offline" && voltage == null) issues.push("no battery voltage");
+      // Data-quality flags only make sense when we're actually in contact —
+      // a silent/offline device having "no voltage" just restates that it's silent.
+      if (!offlineish && !voltagePath) issues.push("device type not configured");
+      else if (!offlineish && voltage == null) issues.push("no battery voltage");
       if (voltage != null && (voltage < band.plausibleMin || voltage > band.plausibleMax || voltage <= 1))
         issues.push("implausible voltage");
       if (voltage != null && voltage <= band.critical) issues.push("low voltage");
-      if (chargeStateRaw && BAD_CHARGE_STATES.includes(chargeStateRaw.toLowerCase()))
+      if (isSolar && chargeStateRaw && BAD_CHARGE_STATES.includes(chargeStateRaw.toLowerCase()))
         issues.push("charger fault");
-      if (connState !== "offline" && charging?.notCharging) issues.push("not charging");
+      if (!offlineish && charging?.notCharging) issues.push("not charging");
       if (trend?.projectedHoursToCutoff != null && trend.projectedHoursToCutoff <= atRiskHorizonHours)
         issues.push("battery draining");
 
@@ -1897,9 +1990,20 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       const batteryCritical =
         (voltage != null && voltage <= band.critical) ||
         (trend?.projectedHoursToCutoff != null && trend.projectedHoursToCutoff <= atRiskHorizonHours);
+      // A device we've never heard from (no ping, no tag data), or that's been
+      // silent past the dormant threshold, isn't an active alert — it's just not
+      // coming online. Treat it as dormant (sinks to the bottom of the priority
+      // sort) rather than a watch.
       const longSilent = lastSeenMs != null && now - lastSeenMs >= dormantAfterMs;
-      if (connState === "offline" && longSilent) severity = "dormant";
-      else if (connState === "offline") severity = "offline";
+      const neverReported = lastSeenMs == null;
+      // ...and a device with no connection determination *and* no voltage data we
+      // have ever seen has no evidence of ever having come online — its only
+      // timestamp is the tag aggregate's stale `last_updated` (provisioning noise,
+      // not a real "last seen"). It's dormant, not "offline" (which implies it was
+      // up and dropped). Excludes recently-heard tag-only devices.
+      const neverOnline = connState === "unknown" && !recentlyHeard && voltage == null && histPoints.length === 0;
+      if (neverReported || longSilent || neverOnline) severity = "dormant";
+      else if (offlineish) severity = "offline";
       else if (batteryCritical || connState === "overdue") severity = "atRisk";
       else if (issues.length > 0 || (voltage != null && voltage <= band.low)) severity = "watch";
       else severity = "ok";
@@ -1907,7 +2011,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       // ---- urgency (ascending sort: lower = more urgent) ----
       let urgencyHours: number;
       if (severity === "dormant") urgencyHours = Number.POSITIVE_INFINITY; // expected silence — sinks to the bottom of priority sort
-      else if (connState === "offline") urgencyHours = -2;
+      else if (offlineish) urgencyHours = -2;
       else if (issues.includes("device type not configured") || issues.includes("no battery voltage") || issues.includes("implausible voltage"))
         urgencyHours = -1;
       else if (trend?.projectedHoursToCutoff != null) urgencyHours = trend.projectedHoursToCutoff;
@@ -1938,13 +2042,13 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
         pmKey,
         voltage,
         temperature: num(pmTags.system_temperature),
-        chargeState: chargeStateRaw,
-        chargeCurrent: num(pmTags.charge_current),
+        chargeState: isSolar ? chargeStateRaw : null,
+        chargeCurrent: isSolar ? num(pmTags.charge_current) : null,
         lastSeenMs,
         conn,
         connState,
-        is24v,
         band,
+        isSolar,
         trend,
         charging,
         atRiskHorizonHours,
@@ -1955,7 +2059,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
         urgencyHours,
       };
     });
-  }, [devices, tagAggs, connAggs, historyByAgent, histQuery.isError, histQuery.isLoading, pmKeyByDevice, dormantAfterMs, defaultHorizonDays]);
+  }, [devices, tagAggs, connAggs, historyByAgent, histQuery.isError, histQuery.isLoading, pmKeyByDevice, dormantAfterMs, defaultHorizonDays, defaultPowerSource]);
 
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -2053,7 +2157,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
     <>
       <div className="relative w-full overflow-x-auto">
         <div className="absolute top-1 right-1 z-10 flex items-center gap-1">
-          <HelpDialog />
+          <HelpDialog anySolar={rows.some((r) => r.isSolar)} />
           <button
             onClick={() => setFullscreen(true)}
             title="Expand"

@@ -1,7 +1,17 @@
 from pathlib import Path
+from enum import Enum
 
 from pydoover import config
 from pydoover.processor import ExtendedPermissionsConfig
+
+
+class PowerSource(Enum):
+    SOLAR_BATTERY = "Solar + Battery"
+    BATTERY = "Battery"
+
+    @classmethod
+    def choices(cls):
+        return [choice.value for choice in cls]
 
 
 class SolarPowerDashboardConfig(config.Schema):
@@ -21,11 +31,26 @@ class SolarPowerDashboardConfig(config.Schema):
             # window. Falls back to ``default_flat_battery_horizon_days`` below
             # when a device type doesn't set it.
             "type__config__flat_battery_horizon_days",
+            # Per-device-type override for the power source ("Battery" or
+            # "Solar + Battery"). Falls back to the dashboard-wide ``power_source``
+            # below when a device type doesn't set it — lets one dashboard mix
+            # solar sites with battery-only devices.
+            "type__config__power_source",
             "solution_installs__display_name",
             "group__id",
             "id",
             "display_name",
         ]
+    )
+
+    power_source = config.Enum(
+        "Power Source",
+        default=PowerSource.SOLAR_BATTERY.value,
+        choices=PowerSource.choices(),
+        description="Whether the monitored devices are solar-charged or battery-only. "
+                    "Battery-only hides all charging signals (the 'Charger' column, the daily-charge "
+                    "history and the 'Not charging' status), which are irrelevant without a solar input. "
+                    "Device types can override this with their own 'power_source'.",
     )
 
     dormant_after_days = config.Integer(

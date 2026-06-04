@@ -10,9 +10,11 @@ class Profile(Enum):
     MONITOR_12V = "Monitor (12V)"
     MAX_ON_12V = "Max On (12V)"
     REGULAR_12V = "Regular (12V)"
+    SUPER_SAVER_12V = "Super Saver (12V)"
     MONITOR_24V = "Monitor (24V)"
     MAX_ON_24V = "Max On (24V)"
     REGULAR_24V = "Regular (24V)"
+    SUPER_SAVER_24V = "Super Saver (24V)"
 
     @classmethod
     def choices(cls):
@@ -68,6 +70,19 @@ profiles = {
         "sleep_thresholds": {13.2: 25, 12.9: 60, 12.6: 240},
         "min_awake_thresholds": {13.2: 240, 12.9: 120, 12.6: 120},
     },
+    ## Aggressively conserve power: sleep longer and longer as voltage drops
+    Profile.SUPER_SAVER_12V.value: {
+        "sleep_thresholds": {
+            13.2: 30,
+            13.0: 60,
+            12.9: 90,
+            12.8: 120,
+            12.6: 240,
+            12.4: 360,
+            12.2: 840,
+        },
+        "min_awake_thresholds": {12.6: 240, 11.8: 120},
+    },
     ## 24V Profiles
     ## Sleep only at a voltage so low that its effectively just monitoring and never shutdown
     Profile.MONITOR_24V.value: {
@@ -83,6 +98,19 @@ profiles = {
     Profile.REGULAR_24V.value: {
         "sleep_thresholds": {24.5: 25, 24.0: 60, 23.0: 240},
         "min_awake_thresholds": {24.5: 300, 24.0: 240, 23.0: 120},
+    },
+    ## Aggressively conserve power: sleep longer and longer as voltage drops
+    Profile.SUPER_SAVER_24V.value: {
+        "sleep_thresholds": {
+            26.4: 30,
+            26.0: 60,
+            25.8: 90,
+            25.6: 120,
+            25.2: 240,
+            24.8: 360,
+            24.4: 840,
+        },
+        "min_awake_thresholds": {25.2: 240, 23.6: 120},
     },
 }
 
@@ -139,6 +167,7 @@ class PowerManagerConfig(config.Schema):
             Profile.MONITOR_24V.value,
             Profile.MAX_ON_24V.value,
             Profile.REGULAR_24V.value,
+            Profile.SUPER_SAVER_24V.value,
         ]
 
     @property

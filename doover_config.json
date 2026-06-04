@@ -38,9 +38,11 @@
                         "Monitor (12V)",
                         "Max On (12V)",
                         "Regular (12V)",
+                        "Super Saver (12V)",
                         "Monitor (24V)",
                         "Max On (24V)",
-                        "Regular (24V)"
+                        "Regular (24V)",
+                        "Super Saver (24V)"
                     ],
                     "title": "Profile",
                     "x-name": "profile",

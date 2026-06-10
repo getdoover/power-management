@@ -1,0 +1,111 @@
+Metadata-Version: 2.4
+Name: pydoover
+Version: 1.1.0
+Summary: Python package for interacting with Doover
+Project-URL: Homepage, https://doover.com
+Author-email: Doover Team <developers@doover.com>
+License-File: LICENSE
+Keywords: doover,doover cli,pydoover
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Requires-Python: >=3.11
+Requires-Dist: aiohttp>=3.12.13
+Requires-Dist: httpx>=0.28.0
+Provides-Extra: grpc
+Requires-Dist: grpcio==1.65.1; extra == 'grpc'
+Requires-Dist: protobuf==5.28.2; extra == 'grpc'
+Provides-Extra: reports
+Requires-Dist: croniter>=6.0.0; extra == 'reports'
+Provides-Extra: test
+Requires-Dist: grpcio-health-checking==1.65.1; extra == 'test'
+Requires-Dist: grpcio==1.65.1; extra == 'test'
+Requires-Dist: jsonschema>=4.23.0; extra == 'test'
+Requires-Dist: protobuf==5.28.2; extra == 'test'
+Requires-Dist: pytest-asyncio>=0.26.0; extra == 'test'
+Requires-Dist: pytest-cov>=7.0.0; extra == 'test'
+Requires-Dist: pytest>=8.3.5; extra == 'test'
+Description-Content-Type: text/markdown
+
+# PyDoover: The Python Package for Doover
+
+PyDoover is a Python package that provides a simple and easy-to-use interface for using the Doover platform on devices, in tasks and CLIs.
+
+## Quick Links
+
+- [Doover Website](https://doover.com)
+- [General Documentation](https://docs.doover.com)
+- [PyDoover API Reference](https://pydoover.readthedocs.io)
+
+## Installing
+**Python 3.11 or higher is required**
+
+```shell
+# Using UV
+uv add pydoover
+
+# Using pip
+pip install -U pydoover
+
+# to install the development version:
+pip install -U git+https://github.com/getdoover/pydoover
+```
+
+If you are using `pydoover` and need **grpc** support and **are not** using the `doover_device_base` docker image, install the grpc optional dependencies:
+
+We currently use `grpcio==1.65.1` across all our services, so you need to install this version of `grpcio` to avoid issues.
+```bash
+uv add pydoover[grpc]
+# or
+pip install -U pydoover[grpc]
+```
+
+### Debian Package
+The `pydoover` package (in particular CLI) is also available as a Debian package. You can install it using the following command:
+
+```bash
+# add the Doover apt repository:
+sudo wget http://apt.u.doover.com/install.sh -O - | sh
+
+# install the package
+sudo apt install doover-pydoover
+```
+
+## Development
+
+To install all dependencies for development, install all optional dependencies (grpc, reports, test, etc.), run:
+```bash
+uv sync --all-extras --all-groups
+```
+
+We use pre-commit hooks to ensure code quality and consistency using Ruff. To set up pre-commit hooks, run the following command:
+
+```bash
+pre-commit install
+```
+
+To run unit tests, use `pytest` in the main directory of the repository:
+
+```bash
+uv run pytest
+```
+
+### Documentation
+The documentation for PyDoover is generated using Sphinx and can be found in the `docs` directory. To build the documentation, run:
+
+```bash
+uv sync --all-extras --all-groups  # ensure all dependencies are installed
+cd docs
+make html
+```
+
+
+## Contributing
+
+For more information, please reach out to the maintainers at hello@doover.com
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

@@ -1,0 +1,2 @@
+from .device_agent import DeviceAgentInterface as DeviceAgentInterface
+from .device_agent import MockDeviceAgentInterface as MockDeviceAgentInterface

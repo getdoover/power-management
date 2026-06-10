@@ -1,0 +1,6 @@
+[console_scripts]
+doover-app-run = solar_power_management:main
+export-config = solar_power_management.app_config:export
+export-config-dashboard = solar_power_dashboard.app_config:export
+export-ui = solar_power_management.app_ui:export
+export-ui-dashboard = solar_power_dashboard.app_ui:export

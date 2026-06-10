@@ -1,0 +1,2 @@
+[console_scripts]
+pydoover = pydoover.cli:entrypoint

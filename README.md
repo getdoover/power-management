@@ -43,7 +43,38 @@ This app exposes the following tags for integration with other apps:
 This app works seamlessly with:
 
 - **Platform Interface**: Core Doover platform component
+- **Solar Power Dashboard**: Fleet-wide monitoring (see below)
 
+
+<br/>
+
+# Solar Power Dashboard
+
+**A fleet dashboard of every device running Solar Power Management — online / offline / nearly-offline status, power-management fault alerts, and an "expected to go offline" estimate from each device's battery-voltage trajectory.**
+
+Deployed once at the organisation level. It renders a `SolarPowerDashboardWidget` remote component (React + Module Federation, Tailwind + shadcn) that reads each device's `tag_values` and `doover_connection` aggregates directly in the browser — no per-device install is required beyond Solar Power Management itself.
+
+<br/>
+
+## What it shows
+
+- **Status** for every device: `Online`, `Nearly Offline` (overdue for a report, low battery, or projected to go flat soon), `Offline`, or `Unknown`.
+- **Battery voltage** with 12 V / 24 V auto-detection and low / critical colouring.
+- **Voltage trend** — a sparkline + slope (V/day) fitted through the *daily minimum* voltage over the last two weeks, so daytime solar-charging spikes don't skew the trend.
+- **Projected offline** — when the daily-minimum trajectory is projected to reach the rail's cutoff voltage (≈ 11 V / 22 V). Devices falling toward that within 72 h are flagged.
+- **Power-management issues** — heuristic fault detection: power management not reporting while the device is online, implausible voltage readings, critically low voltage, an active low-battery notification, charger fault states, a steep discharge trajectory, or an unusually long sleep cycle.
+- **Summary cards**: Online / Nearly Offline / Offline / Power Mgmt Issues counts.
+
+The table is sortable (default sort is **Priority** — offline devices and active faults first, then soonest-projected-offline). Click a row to expand details (rail, temperature, charger, sleep cycle, next wake). Click the device name to open it. There's an expand button for a full-screen view with all columns.
+
+<br/>
+
+## Configuration
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Devices** (extended permissions) | Which devices the dashboard can see. Set **Apps Installed → Solar Power Management** so every device running it is picked up automatically. | `Required` |
+| **Position** | Where the dashboard sits in the app list | `100` |
 
 <br/>
 

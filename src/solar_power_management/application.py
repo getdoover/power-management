@@ -459,9 +459,12 @@ class PowerManager(Application):
         await self.tags.is_online.set(not self.about_to_shutdown)
 
         # Low battery warning
-        await self.tags.low_batt_warning_hidden.set(
-            not (self.last_voltage and self.is_battery_low)
-        )
+        battery_ok = not (self.last_voltage and self.is_battery_low)
+        await self.tags.low_batt_warning_hidden.set(battery_ok)
+        if battery_ok and self.ui.low_batt_warning.value:
+            # Battery has recovered — clear any user dismissal so the warning
+            # shows fresh next time the battery goes low.
+            await self.ui.low_batt_warning.set(False)
 
         # Immunity warning
         immunity_time = await self.get_immunity_time()
@@ -475,6 +478,10 @@ class PowerManager(Application):
             await self.tags.immune_warning_text.set(text)
         else:
             await self.tags.immune_warning_hidden.set(True)
+            if self.ui.is_immune_warning.value:
+                # Device is no longer immune — clear any user dismissal so the
+                # warning shows fresh next time immunity is enabled.
+                await self.ui.is_immune_warning.set(False)
 
         # Sleep warning
         sleep_warning_time = (

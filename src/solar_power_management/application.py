@@ -4,9 +4,13 @@ import time
 from datetime import timedelta, datetime, timezone
 
 from pydoover.docker import Application, run_app
-from pydoover.models import ConnectionConfig, ConnectionType as DooverConnectionType
+from pydoover.models import (
+    ConnectionConfig,
+    ConnectionType as DooverConnectionType,
+    MessageCreateEvent,
+)
 from pydoover.ui import handler
-from pydoover.utils import apply_async_kalman_filter
+from pydoover.utils import apply_async_kalman_filter, generate_snowflake_id_at
 
 from .victron import VictronDevice
 from .app_config import PowerManagerConfig
@@ -329,6 +333,9 @@ class PowerManager(Application):
         self.voltage_update_interval = 5
         self.about_to_shutdown = False
         self.victron_devices = []
+        # How far back to look for UI commands missed while offline. Bounds the
+        # replay so a fresh/cleared cursor can't replay ancient commands.
+        self.ui_cmd_replay_max_age_hours = 24
 
         await self.maybe_reset_soft_watchdog()
 
@@ -382,6 +389,9 @@ class PowerManager(Application):
         # Backfill voltage/power history captured while the device was asleep.
         await self.backfill_sleep_log()
 
+        # Replay any UI commands a user issued while the device was offline.
+        await self.replay_offline_ui_commands()
+
     async def backfill_sleep_log(self):
         """Backfill voltage/power history from snapshots taken while asleep.
 
@@ -426,6 +436,66 @@ class PowerManager(Application):
         if newest > since:
             await self.tags.last_sleep_log_ts.set(newest)
         log.info(f"Backfilled {len(points)} sleep-log snapshot(s).")
+
+    async def replay_offline_ui_commands(self):
+        """Replay UI commands a user issued while the device was offline.
+
+        The device only receives live ui_cmds events once it has booted and
+        subscribed, so any button presses made while it was asleep sit in the
+        channel history unprocessed. On boot we read that history and feed each
+        command back through the normal UI dispatch path, so handlers (e.g.
+        ``enable_immunity``) actually run.
+
+        This is a deliberately dodgy stop-gap living in the app — eventually the
+        device agent should replay missed commands generically for every app.
+        Fully guarded so a failure here never blocks startup.
+        """
+        # Cursor (snowflake id of the newest command already replayed), bounded
+        # by a max look-back so a fresh/cleared cursor can't replay ancient
+        # commands on first boot.
+        cursor = int(self.tags.last_ui_cmd_id.value or 0)
+        cutoff = datetime.now(tz=timezone.utc) - timedelta(
+            hours=self.ui_cmd_replay_max_age_hours
+        )
+        after = max(cursor, generate_snowflake_id_at(cutoff))
+
+        try:
+            messages = await self.device_agent.list_messages("ui_cmds", after=after)
+        except Exception as e:
+            log.info(f"ui_cmds history unavailable, skipping replay: {e}")
+            return
+
+        newest, replayed = cursor, 0
+        for message in sorted(messages, key=lambda m: m.id):
+            newest = max(newest, message.id)
+
+            data = message.data or {}
+            # Only replay commands (button presses / RPC interactions) aimed at
+            # this app. Slider/variable state is already current from the boot
+            # aggregate sync, so it needs no replay.
+            if data.get("type") != "rpc":
+                continue
+            if data.get("app_key", self.app_key) != self.app_key:
+                continue
+
+            method = data.get("method")
+            log.info(
+                f"Replaying offline UI command '{method}' "
+                f"from {message.timestamp.isoformat()}"
+            )
+            try:
+                await self.ui_manager._on_event(
+                    MessageCreateEvent(message.channel, message)
+                )
+            except Exception as e:
+                log.warning(f"Failed to replay UI command '{method}': {e}")
+            else:
+                replayed += 1
+
+        if newest > cursor:
+            await self.tags.last_ui_cmd_id.set(newest)
+        if replayed:
+            log.info(f"Replayed {replayed} offline UI command(s).")
 
     async def main_loop(self):
         await self.maybe_reset_soft_watchdog()

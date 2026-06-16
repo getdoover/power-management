@@ -12,6 +12,10 @@ class PowerManagerTags(Tags):
     # written to history, so reboots don't re-post the same points.
     last_sleep_log_ts = Tag("number", default=0)
 
+    # Cursor for offline UI-command replay: snowflake id of the newest ui_cmds
+    # message already replayed, so reboots don't run the same command twice.
+    last_ui_cmd_id = Tag("number", default=0)
+
     # Victron charger
     victron_hidden = Tag("boolean", default=True)
     charge_state = Tag("string", default=None)

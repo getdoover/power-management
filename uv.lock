@@ -997,7 +997,7 @@ dev = [
 requires-dist = [
     { name = "bleak", specifier = "==0.22.3" },
     { name = "pydoover", specifier = ">=1.4.2" },
-    { name = "victron-ble" },
+    { name = "victron-ble", specifier = "==0.9.3" },
 ]
 
 [package.metadata.requires-dev]

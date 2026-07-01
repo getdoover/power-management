@@ -214,9 +214,13 @@ class VictronDevice:
         # await self.stop()
         return self.last_data
 
-    def recv_data(self, device: dict, data: bytes):
+    def recv_data(self, device: dict, data: bytes, advertisement=None):
         """
         Callback function to handle received data from the Victron device.
+
+        victron_ble 0.9.3 added a third ``advertisement`` argument to the
+        detection callback; accept it optionally so we stay compatible with
+        both the 0.9.2 (two-arg) and 0.9.3 (three-arg) calling conventions.
         """
         self.logger.debug(f"Received data from device {device}")
         self.logger.debug(f"Data: {data.hex()}")

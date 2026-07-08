@@ -171,7 +171,7 @@ type HistoryStatus = "ok" | "loading" | "error" | "none" | "short";
  * Solar Power Management app key is hardcoded in the widget anymore.
  *
  * `type.config.flat_battery_horizon_days` (optional) lets a device type tune
- * how soon a projected flat battery counts as "nearly offline" — e.g. a Doovit
+ * how soon a projected flat battery counts as "going flat soon" — e.g. a Doovit
  * that recharges over ~3 days wants a much tighter window than a solar site.
  */
 interface SolarDeviceEntry extends DeviceMapEntry {
@@ -273,7 +273,7 @@ interface DeviceRow {
   isSolar: boolean;
   trend: TrendInfo | null;
   charging: ChargingInfo | null;
-  /** "Nearly offline" projection horizon for this device, in hours (per device type, else dashboard default). */
+  /** "Going flat soon" projection horizon for this device, in hours (per device type, else dashboard default). */
   atRiskHorizonHours: number;
   historyStatus: HistoryStatus;
   historyPointCount: number;
@@ -616,7 +616,7 @@ function statusBadge(d: DeviceRow, truncate = false) {
     case "atRisk":
       variant = "warning";
       icon = <TriangleAlert />;
-      label = "Nearly Offline";
+      label = "Going Flat Soon";
       break;
     case "watch":
       // Surface "not charging" by name rather than the generic "Watch" when
@@ -1607,7 +1607,7 @@ function SummaryCards({ rows, compact }: { rows: DeviceRow[]; compact?: boolean 
   const withIssues = rows.filter((d) => d.issues.length > 0).length;
   const cells: { label: string; short: string; value: number; cls: string; icon: ReactNode }[] = [
     { label: "Online", short: "online", value: online, cls: "text-green-600 dark:text-green-400", icon: <Wifi className="size-4" /> },
-    { label: "Nearly Offline", short: "nearly offline", value: nearly, cls: "text-amber-600 dark:text-amber-400", icon: <TriangleAlert className="size-4" /> },
+    { label: "Battery Low", short: "battery low", value: nearly, cls: "text-amber-600 dark:text-amber-400", icon: <TriangleAlert className="size-4" /> },
     { label: "Offline", short: "offline", value: offline, cls: "text-destructive", icon: <WifiOff className="size-4" /> },
     { label: "Power Mgmt Issues", short: "issues", value: withIssues, cls: "text-destructive", icon: <AlertTriangle className="size-4" /> },
   ];
@@ -1726,7 +1726,7 @@ function HelpDialog({ anySolar }: { anySolar: boolean }) {
               <span><span className="text-foreground font-medium">Online</span> — healthy</span>
               <span><span className="text-foreground font-medium">Watch</span> — a non-critical issue (low-ish battery{anySolar ? ", charger fault" : ""}, bad data)</span>
               {anySolar && <span><span className="text-foreground font-medium">Not charging</span> — no daytime charge for 3+ days</span>}
-              <span><span className="text-foreground font-medium">Nearly Offline</span> — critically low, low-battery alarm sent, or projected flat within its horizon</span>
+              <span><span className="text-foreground font-medium">Battery Low</span> — critically low, low-battery alarm sent, or projected flat within its horizon</span>
               <span><span className="text-foreground font-medium">Offline</span> — silent past its expected check-in</span>
               <span><span className="text-foreground font-medium">Dormant</span> — offline 30+ days, or never reported</span>
             </dd>
@@ -1740,7 +1740,7 @@ function HelpDialog({ anySolar }: { anySolar: boolean }) {
           <div>
             <dt className="font-medium text-foreground">Projected offline</dt>
             <dd className="text-muted-foreground">
-              Takes the lowest voltage per day over the last 30 days, fits a line, and extends it to the flat-battery cutoff (~11 V / 22 V). A device projected to reach that within the at-risk horizon (configurable per device type; default 30 days) is flagged Nearly Offline.
+              Takes the lowest voltage per day over the last 30 days, fits a line, and extends it to the flat-battery cutoff (~11 V / 22 V). A device projected to reach that within the at-risk horizon (configurable per device type; default 30 days) is flagged Battery Low.
             </dd>
           </div>
           {anySolar && (
@@ -1929,7 +1929,7 @@ function SolarPowerDashboardWidgetInner({ uiElement }: { uiElement: UiRemoteComp
       // suppressed for them below.
       const isSolar = resolveIsSolar(dev.type?.config?.power_source ?? defaultPowerSource);
 
-      // Per-device "nearly offline" horizon: device-type override, else dashboard default.
+      // Per-device "battery low" horizon: device-type override, else dashboard default.
       const typeHorizonDays = numLoose(dev.type?.config?.flat_battery_horizon_days);
       const atRiskHorizonHours = Math.max(1, typeHorizonDays ?? defaultHorizonDays) * 24;
 

@@ -156,6 +156,11 @@ class PowerManagerConfig(config.Schema):
         description="The Victron devices to bluetooth to.",
     )
     position = ApplicationPosition(default=120)
+    offline_after_hrs = config.Number(
+        "Offline After (hours)",
+        description="Number of hours after which to show offline. Defaults to 5 times the sleep time (blank)",
+        default=None,
+    )
 
     @property
     def is_12v(self) -> bool:

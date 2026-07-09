@@ -109,7 +109,10 @@ class PowerManager(Application):
         """Publish the device's connection config to the doover_connection channel."""
         if sleep_time is not None and time_till_sleep is not None:
             next_wake_at_ms = int((time.time() + time_till_sleep + sleep_time) * 1000)
-            offline_after = (time_till_sleep + sleep_time) * 5
+            if self.config.offline_after_hrs.value is None:
+                offline_after = (time_till_sleep + sleep_time) * 5
+            else:
+                offline_after = self.config.offline_after_hrs.value * 60 * 60
         else:
             next_wake_at_ms = None
             offline_after = None

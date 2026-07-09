@@ -187,7 +187,6 @@ class PowerManagerConfig(config.Schema):
         default=NIGHT_DISABLED,
         choices=[NIGHT_DISABLED]
         + [c for c in Profile.choices() if c != Profile.CUSTOM.value],
-        advanced=True,
     )
     night_start = config.String(
         "Night Start",

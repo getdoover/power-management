@@ -9,7 +9,7 @@ from pydoover.ui import handler
 from pydoover.utils import apply_async_kalman_filter
 
 from .victron import VictronDevice
-from .app_config import PowerManagerConfig
+from .app_config import NIGHT_DISABLED, PowerManagerConfig
 from .app_tags import PowerManagerTags
 from .app_ui import PowerManagerUI
 
@@ -24,6 +24,10 @@ class PowerManager(Application):
     config: PowerManagerConfig
     tags: PowerManagerTags
     ui: PowerManagerUI
+
+    ## Floor for a sleep that's been shortened to land on a day/night boundary.
+    ## Below this, the boot+shutdown cycle costs more than the sleep saves.
+    MIN_CLAMPED_SLEEP_SECS = 600
 
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
@@ -65,16 +69,58 @@ class PowerManager(Application):
     async def get_system_temperature(self) -> float:
         return await self.platform_iface.fetch_system_temperature()
 
+    def _clock_trustworthy(self, now: datetime) -> bool:
+        """The CM4 has no battery-backed RTC, so the clock may be bogus early in boot."""
+        return now.year >= 2024
+
+    def _active_profile(self) -> str:
+        """The profile in effect right now, accounting for the night profile."""
+        now = self.config.local_now()
+        if not self._clock_trustworthy(now):
+            log.warning(f"System clock implausible ({now}); using the day profile.")
+            return self.config.profile.value
+        return self.config.active_profile_value(now)
+
+    def _clamp_sleep_to_boundary(self, sleep_time: int | None) -> int | None:
+        """Shorten a sleep so we wake at the next day<->night boundary.
+
+        Without this, a long night sleep started shortly before dawn would run
+        hours into the day, ignoring the day profile until it expired. Floored at
+        MIN_CLAMPED_SLEEP_SECS so that a boundary a minute away overshoots rather
+        than burning a whole boot cycle on a token sleep.
+        """
+        if sleep_time is None:
+            return None
+
+        now = self.config.local_now()
+        if not self._clock_trustworthy(now):
+            return sleep_time
+
+        secs_to_boundary = self.config.secs_to_next_boundary(now)
+        if secs_to_boundary is None:
+            return sleep_time
+
+        clamped = min(sleep_time, max(secs_to_boundary, self.MIN_CLAMPED_SLEEP_SECS))
+        if clamped != sleep_time:
+            log.info(
+                f"Clamping sleep from {sleep_time} to {clamped} seconds "
+                f"({secs_to_boundary} seconds to the next day/night boundary)"
+            )
+        return clamped
+
     def get_sleep_time(self) -> int | None:
         if self.last_voltage is None:
             return None
 
+        profile = self._active_profile()
         for voltage, sleep_time in sorted(
-            self.config.sleep_time_threshold_lookup, key=lambda x: x[0]
+            self.config.sleep_lookup_for(profile), key=lambda x: x[0]
         ):
             if self.last_voltage <= voltage:
-                log.info(f"Sleep time determined from config: {sleep_time} minutes")
-                return sleep_time * 60
+                log.info(
+                    f"Sleep time determined from profile {profile!r}: {sleep_time} minutes"
+                )
+                return self._clamp_sleep_to_boundary(sleep_time * 60)
 
     def get_min_awake_time(self) -> int:
         abs_min_awake_time = 90  # The floor value for the minimum awake time
@@ -85,8 +131,9 @@ class PowerManager(Application):
                 abs_min_awake_time,
             )
 
+        profile = self._active_profile()
         for voltage, awake_time in sorted(
-            self.config.min_awake_time_threshold_lookup, key=lambda x: x[0]
+            self.config.awake_lookup_for(profile), key=lambda x: x[0]
         ):
             if self.last_voltage <= voltage:
                 log.info(f"Min awake time determined from config: {awake_time} seconds")
@@ -202,6 +249,12 @@ class PowerManager(Application):
     async def schedule_next_startup(self):
         if self.scheduled_sleep_time is None:
             self.scheduled_sleep_time = self.get_sleep_time()
+        else:
+            # The sleep time was fixed when the sleep was scheduled, but shutdown can
+            # take several minutes. Re-clamp in case a boundary passed in the meantime.
+            self.scheduled_sleep_time = self._clamp_sleep_to_boundary(
+                self.scheduled_sleep_time
+            )
 
         log.info(f"Scheduling next startup in {self.scheduled_sleep_time} seconds...")
         await self.platform_iface.schedule_startup(self.scheduled_sleep_time)
@@ -331,6 +384,16 @@ class PowerManager(Application):
         self.victron_devices = []
 
         await self.maybe_reset_soft_watchdog()
+
+        reason = self.config.night_disabled_reason()
+        if reason is None:
+            log.info(
+                f"Night profile {self.config.night_profile.value!r} active from "
+                f"{self.config.night_start.value} to {self.config.night_end.value} "
+                f"(local time now {self.config.local_now()})"
+            )
+        elif self.config.night_profile.value not in (None, "", NIGHT_DISABLED):
+            log.warning(f"Night profile ignored: {reason}.")
 
         for victron_config in self.config.victron_configs.elements:
             self.victron_devices.append(

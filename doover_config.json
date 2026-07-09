@@ -56,6 +56,73 @@
                     "default": "Regular (12V)",
                     "x-position": 0
                 },
+                "night_profile": {
+                    "enum": [
+                        "Disabled",
+                        "Monitor (12V)",
+                        "Max On (12V)",
+                        "Regular (12V)",
+                        "Super Saver (12V)",
+                        "Monitor (24V)",
+                        "Max On (24V)",
+                        "Regular (24V)",
+                        "Super Saver (24V)"
+                    ],
+                    "title": "Night Profile",
+                    "x-name": "night_profile",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Optional. Applies during night hours (see Night Start / Night End). Leave as 'Disabled' to use the main Profile around the clock. Must be the same voltage class (12V/24V) as the main Profile.",
+                    "default": "Disabled",
+                    "x-position": 1,
+                    "x-advanced": true
+                },
+                "night_start": {
+                    "title": "Night Start",
+                    "x-name": "night_start",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Local time in 24h HH:MM when the night profile takes over.",
+                    "default": "18:00",
+                    "x-position": 2,
+                    "x-advanced": true
+                },
+                "night_end": {
+                    "title": "Night End",
+                    "x-name": "night_end",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "Local time in 24h HH:MM when the day profile takes over.",
+                    "default": "06:00",
+                    "x-position": 3,
+                    "x-advanced": true
+                },
+                "timezone": {
+                    "title": "Timezone",
+                    "x-name": "timezone",
+                    "x-hidden": false,
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "x-required": false,
+                    "description": "IANA name, e.g. 'Australia/Brisbane'. Leave blank to use the device's local time.",
+                    "default": "",
+                    "x-position": 4,
+                    "x-advanced": true
+                },
                 "sleep_time_thresholds": {
                     "title": "Sleep Time Thresholds",
                     "x-name": "sleep_time_thresholds",
@@ -63,7 +130,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Only used if the profile is 'Custom'. Custom thresholds for sleep times",
-                    "x-position": 1,
+                    "x-position": 5,
                     "x-advanced": true,
                     "items": {
                         "title": "Sleep Time Thresholds",
@@ -114,7 +181,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "Only used if the profile is 'Custom'. Custom thresholds for minimum awake times",
-                    "x-position": 2,
+                    "x-position": 6,
                     "x-advanced": true,
                     "items": {
                         "title": "Awake Time Thresholds",
@@ -168,7 +235,7 @@
                     ],
                     "x-required": false,
                     "default": 60,
-                    "x-position": 3,
+                    "x-position": 7,
                     "x-advanced": true,
                     "minimum": 10,
                     "maximum": 1440
@@ -184,7 +251,7 @@
                     "x-required": false,
                     "description": "Input voltage at which the device wakes itself from sleep. Leave blank to default to 13.5V for 12V profiles or 27V for 24V profiles.",
                     "default": null,
-                    "x-position": 4,
+                    "x-position": 8,
                     "x-advanced": true,
                     "minimum": 0,
                     "maximum": 36
@@ -196,7 +263,7 @@
                     "type": "array",
                     "x-required": true,
                     "description": "The Victron devices to bluetooth to.",
-                    "x-position": 5,
+                    "x-position": 9,
                     "items": {
                         "title": "Victron Bluetooth Config",
                         "x-name": "victron_bluetooth_config",
@@ -248,7 +315,7 @@
                     "x-required": false,
                     "description": "Position of Application in UI Structure. Smaller numbers are closer to the top.",
                     "default": 120,
-                    "x-position": 6,
+                    "x-position": 10,
                     "minimum": 0
                 }
             },

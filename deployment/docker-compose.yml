@@ -12,6 +12,7 @@ services:
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
       - /var/run/dbus:/var/run/dbus  # Additional D-Bus access
       - /etc/machine-id:/etc/machine-id:ro  # helps D-Bus identify the machine
+      - /etc/localtime:/etc/localtime:ro  # night profile hours are in device local time
     cap_add:
       - NET_ADMIN  # not strictly required for D-Bus control, but handy for checks
       - SYS_ADMIN  # Required for Bluetooth operations

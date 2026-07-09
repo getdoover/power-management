@@ -22,12 +22,15 @@ try:
     from victron_ble.exceptions import AdvertisementKeyMissingError, UnknownDeviceError
 
 except ImportError:
-    raise ImportError("victron-ble package is required. Install with: pip install victron-ble")
+    raise ImportError(
+        "victron-ble package is required. Install with: pip install victron-ble"
+    )
 
 
 @dataclass
 class VictronDeviceData:
     """Data structure for Victron device readings."""
+
     data: Dict[str, Any]
     device: BLEDevice
     data_time: float
@@ -46,30 +49,30 @@ class VictronDeviceData:
     @property
     def name(self):
         return self._data_as_dict().get("name", None)
-    
+
     @property
     def address(self):
         return self.device.address
-    
+
     @property
     def rssi(self):
         return self.device.rssi
-    
+
     @property
     def payload(self):
         return self._data_as_dict()
-    
+
     @property
     def state(self):
         result = self.charger_state
         if result is None:
             result = self.charge_state
         return result
-    
+
     @property
     def error(self):
         return self.charger_error
-    
+
     @property
     def output_current(self):
         current_1 = self.output_current1
@@ -128,7 +131,13 @@ class VictronScanner(Scanner):
     """
     A scanner for Victron devices.
     """
-    def __init__(self, device_address: str, device_key: str, callback: Callable[[dict, bytes], None]):
+
+    def __init__(
+        self,
+        device_address: str,
+        device_key: str,
+        callback: Callable[[dict, bytes], None],
+    ):
         super().__init__({device_address: device_key})
         self.callback = callback
 
@@ -146,7 +155,7 @@ class VictronScanner(Scanner):
             #     address = ble_device.identifier.lower()
             #     return self._get_device(address, raw_data)
             # except Exception as e:
-                raise e
+            raise e
 
     def _get_device(self, address: str, raw_data: bytes):
         if address not in self._known_devices:
@@ -165,24 +174,26 @@ class VictronScanner(Scanner):
 class VictronDevice:
     """
     A simple interface to read data from Victron devices via Bluetooth LE.
-    
+
     This class provides methods to scan for and read data from Victron devices
     using the victron-ble package.
     """
-    
+
     def __init__(self, device_address: str, device_key: str):
         """
         Initialize the Victron device interface.
-        
+
         Args:
             device_address: The Bluetooth MAC address of the device (e.g., "CB:CF:B2:57:19:DA" or "cbcfb25719da")
             device_key: The encryption key for the device (e.g., "ae6adb08be413881a9dd4f0a5aa410de")
         """
         # Convert the device address to uppercase if it's not already
-        if device_address.count(':') == 5 or len(device_address) > 20:
+        if device_address.count(":") == 5 or len(device_address) > 20:
             self.device_address = device_address.lower()
         else:
-            self.device_address = ':'.join(device_address[i:i+2] for i in range(0, len(device_address), 2))
+            self.device_address = ":".join(
+                device_address[i : i + 2] for i in range(0, len(device_address), 2)
+            )
         self.device_key = device_key
         self.logger = logging.getLogger(__name__)
 
@@ -199,7 +210,10 @@ class VictronDevice:
         reset_after = 60
         while True:
             await asyncio.sleep(10)
-            if self.last_data is not None and time.time() - self.last_data_time > reset_after:
+            if (
+                self.last_data is not None
+                and time.time() - self.last_data_time > reset_after
+            ):
                 self.last_data = None
                 self.data_recv_event.clear()
 
@@ -247,18 +261,14 @@ class VictronDevice:
         _dev = self.scanner.get_device(device, data)
 
         parsed = _dev.parse(data)
-        
-        result = VictronDeviceData(
-            data=parsed,
-            device=device,
-            data_time=time.time()
-        )
+
+        result = VictronDeviceData(data=parsed, device=device, data_time=time.time())
         return result
 
     async def start(self):
         """
         Read data from the Victron device.
-        
+
         """
         if self.scanner:
             return
@@ -266,13 +276,15 @@ class VictronDevice:
             self.reset_data_task = asyncio.create_task(self.reset_data())
         try:
             # Create a scanner instance
-            scanner = VictronScanner(self.device_address, self.device_key, self.recv_data)
+            scanner = VictronScanner(
+                self.device_address, self.device_key, self.recv_data
+            )
             self.scanner = scanner
             await scanner.start()
         except Exception as e:
             self.logger.error(f"Error starting scanner: {e}")
             # raise
-    
+
     async def stop(self):
         """
         Stop the scanner.
@@ -287,28 +299,30 @@ class VictronDevice:
     async def scan_for_devices(self, timeout: int = 10) -> list:
         """
         Scan for available Victron devices.
-        
+
         Args:
             timeout: Scanning timeout in seconds
-            
+
         Returns:
             List of discovered Victron devices
         """
         try:
             scanner = Scanner()
             self.logger.info("Scanning for Victron devices...")
-            
+
             devices = await scanner.scan(timeout=timeout)
-            
+
             if devices:
                 self.logger.info(f"Found {len(devices)} Victron device(s)")
                 for device in devices:
-                    self.logger.info(f"  - {device.get('name', 'Unknown')} ({device.get('address', 'Unknown')})")
+                    self.logger.info(
+                        f"  - {device.get('name', 'Unknown')} ({device.get('address', 'Unknown')})"
+                    )
             else:
                 self.logger.info("No Victron devices found")
-                
+
             return devices
-            
+
         except Exception as e:
             self.logger.error(f"Error scanning for devices: {e}")
             return []
@@ -320,15 +334,15 @@ class VictronDevice:
 # Example usage and testing
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     async def main():
         # Example device from your output
 
         ## Shed Battery Charger
         # device_address = "CB:CF:B2:57:19:DA"
-        device_address = "46A887B1-2D57-3A13-77DF-691493C18A82" ## It seems mac wants a different address
+        device_address = "46A887B1-2D57-3A13-77DF-691493C18A82"  ## It seems mac wants a different address
         device_key = "ae6adb08be413881a9dd4f0a5aa410de"
-        
+
         ## Test Smart Solar Charger
         device_address = "20CF582C-3130-6A4B-F08C-F49A63F76250"
         device_key = "17a91f990954a3cb13f4deb059d70b00"
@@ -338,11 +352,11 @@ if __name__ == "__main__":
 
         # Create device instance
         device = VictronDevice(device_address, device_key)
-        
+
         # Await data from the device
         data = await device.await_data()
         await device.stop()
         data.pretty_print()
-    
+
     # Run the example
     asyncio.run(main())

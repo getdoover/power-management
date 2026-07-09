@@ -18,9 +18,10 @@ services:
     environment:
       - APP_KEY=solar_power_management-1
       - CONFIG_FP=/app/simulators/app_config.json
+    volumes:
+      - /etc/localtime:/etc/localtime:ro  # night profile hours are in device local time
     # Uncomment below for real hardware with Bluetooth access:
     # privileged: true
-    # volumes:
     #   - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
     #   - /etc/machine-id:/etc/machine-id:ro
     #   - /var/run/dbus:/var/run/dbus

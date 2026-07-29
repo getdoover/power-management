@@ -29,6 +29,11 @@ class PowerManager(Application):
     ## Below this, the boot+shutdown cycle costs more than the sleep saves.
     MIN_CLAMPED_SLEEP_SECS = 600
 
+    ## Pages of sleep log to drain per boot. The platform returns 25 snapshots per
+    ## page (~6h at the 15min default) and retains ~4 days, so this covers a full
+    ## backlog while bounding how long setup() can spend on the RP2040 serial.
+    SLEEP_LOG_MAX_PAGES = 20
+
     async def update_voltage(self):
         # Only update the voltage every voltage_update_interval seconds
         if (
@@ -452,43 +457,69 @@ class PowerManager(Application):
         powered off. On boot we read any new ones and write them to history so the
         graphs aren't blank for the offline period. Fully guarded: if the firmware
         doesn't support the sleep log, this just logs and returns.
+
+        ``fetch_sleep_log`` is paginated: passing ``since`` returns the *oldest*
+        page at/after it, not everything. One page is well short of a full sleep,
+        so we page forward until drained — otherwise the cursor advances by only
+        one page per boot while real time advances by a whole sleep, and the
+        history we post falls further behind on every wake.
         """
         since = int(self.tags.last_sleep_log_ts.value or 0)
-        try:
-            entries = await self.platform_iface.fetch_sleep_log(since=since)
-        except Exception as e:
-            log.info(f"Sleep log unavailable, skipping backfill: {e}")
-            return
+        cursor, total = since, 0
 
-        if not entries:
-            return
-
-        points, newest = [], since
-        for entry in entries:
-            ts_ms = int(entry.timestamp)
-            if ts_ms <= since:
-                continue
-            tags = {}
-            if entry.input_voltage:
-                tags["system_voltage"] = round(entry.input_voltage, 2)
-            if entry.system_power:
-                tags["system_power"] = round(entry.system_power, 2)
-            if tags:
-                points.append(
-                    (datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc), tags)
-                )
-            newest = max(newest, ts_ms)
-
-        if points:
+        for _ in range(self.SLEEP_LOG_MAX_PAGES):
             try:
-                await self.tag_manager.log_history(points)
+                entries = await self.platform_iface.fetch_sleep_log(since=cursor)
             except Exception as e:
-                log.warning(f"Failed to backfill sleep-log history: {e}")
-                return
+                log.info(f"Sleep log unavailable, stopping backfill: {e}")
+                break
 
-        if newest > since:
-            await self.tags.last_sleep_log_ts.set(newest)
-        log.info(f"Backfilled {len(points)} sleep-log snapshot(s).")
+            if not entries:
+                break
+
+            ## The page is inclusive of the record at ``cursor`` (the previous
+            ## page's newest), so skipping <= cursor drops the overlap.
+            points, newest = [], cursor
+            for entry in entries:
+                ts_ms = int(entry.timestamp)
+                if ts_ms <= cursor:
+                    continue
+                tags = {}
+                if entry.input_voltage:
+                    tags["system_voltage"] = round(entry.input_voltage, 2)
+                if entry.system_power:
+                    tags["system_power"] = round(entry.system_power, 2)
+                if tags:
+                    points.append(
+                        (datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc), tags)
+                    )
+                newest = max(newest, ts_ms)
+
+            if points:
+                try:
+                    await self.tag_manager.log_history(points)
+                except Exception as e:
+                    log.warning(f"Failed to backfill sleep-log history: {e}")
+                    break
+
+            total += len(points)
+            ## Nothing newer than the cursor on this page — we're drained. Save
+            ## the cursor only after the points are safely written, so a failure
+            ## mid-page is retried on the next boot rather than skipped.
+            if newest <= cursor:
+                break
+            cursor = newest
+            await self.tags.last_sleep_log_ts.set(cursor)
+        else:
+            log.warning(
+                f"Sleep-log backfill hit the {self.SLEEP_LOG_MAX_PAGES}-page cap "
+                f"with history remaining; resuming from {cursor} next boot."
+            )
+
+        log.info(
+            f"Backfilled {total} sleep-log snapshot(s) "
+            f"(cursor {since} -> {cursor})."
+        )
 
     async def main_loop(self):
         await self.maybe_reset_soft_watchdog()

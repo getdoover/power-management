@@ -1,4 +1,4 @@
-from pydoover.tags import Tag, Tags
+from pydoover.tags import Tag, Tags, AnyChange
 
 
 class PowerManagerTags(Tags):
@@ -6,7 +6,7 @@ class PowerManagerTags(Tags):
     system_voltage = Tag("number", default=None, live=True)
     system_power = Tag("number", default=None, live=True)
     system_temperature = Tag("number", default=None, live=True)
-    is_online = Tag("boolean", default=True, live=True)
+    is_online = Tag("boolean", default=True, live=True, log_on=AnyChange())
 
     # Cursor for sleep-log backfill: epoch ms of the newest snapshot already
     # written to history, so reboots don't re-post the same points.

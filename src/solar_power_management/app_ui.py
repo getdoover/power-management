@@ -6,6 +6,21 @@ from .app_tags import PowerManagerTags
 
 
 class PowerManagerUI(ui.UI, display_name="Power & Battery"):
+    # Declaration order sets display order. State of charge only comes from a
+    # SmartShunt, so it's hidden (and voltage leads) on devices without one.
+    shunt_soc = ui.NumericVariable(
+        "Battery State of Charge",
+        units="%",
+        value=PowerManagerTags.shunt_soc,
+        precision=0,
+        hidden=PowerManagerTags.shunt_hidden,
+        ranges=[
+            ui.Range("Low", 0, 20, ui.Colour.red),
+            ui.Range("Medium", 20, 50, ui.Colour.yellow),
+            ui.Range("Good", 50, 100, ui.Colour.green),
+        ],
+    )
+
     system_voltage = ui.NumericVariable(
         "Battery Voltage",
         units="V",
@@ -53,18 +68,6 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
     )
 
     # SmartShunt elements - hidden until a battery monitor reports in
-    shunt_soc = ui.NumericVariable(
-        "Battery State of Charge",
-        units="%",
-        value=PowerManagerTags.shunt_soc,
-        precision=0,
-        hidden=PowerManagerTags.shunt_hidden,
-        ranges=[
-            ui.Range("Low", 0, 20, ui.Colour.red),
-            ui.Range("Medium", 20, 50, ui.Colour.yellow),
-            ui.Range("Good", 50, 100, ui.Colour.green),
-        ],
-    )
     shunt_voltage = ui.NumericVariable(
         "Shunt Voltage",
         units="V",
@@ -83,20 +86,6 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
         "Battery Power",
         units="W",
         value=PowerManagerTags.shunt_power,
-        precision=1,
-        hidden=PowerManagerTags.shunt_hidden,
-    )
-    shunt_consumed_ah = ui.NumericVariable(
-        "Consumed",
-        units="Ah",
-        value=PowerManagerTags.shunt_consumed_ah,
-        precision=1,
-        hidden=PowerManagerTags.shunt_hidden,
-    )
-    shunt_time_remaining = ui.NumericVariable(
-        "Time Remaining",
-        units="h",
-        value=PowerManagerTags.shunt_time_remaining,
         precision=1,
         hidden=PowerManagerTags.shunt_hidden,
     )

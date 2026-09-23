@@ -230,11 +230,10 @@ class VictronScanner(Scanner):
 
     def __init__(
         self,
-        device_address: str,
-        device_key: str,
+        device_keys: Dict[str, str],
         callback: Callable[[dict, bytes], None],
     ):
-        super().__init__({device_address: device_key})
+        super().__init__(device_keys)
         self.callback = callback
 
     def callback(self, device: dict, data: bytes):
@@ -284,9 +283,10 @@ class VictronDevice:
             device_address: The Bluetooth MAC address of the device (e.g., "CB:CF:B2:57:19:DA" or "cbcfb25719da")
             device_key: The encryption key for the device (e.g., "ae6adb08be413881a9dd4f0a5aa410de")
         """
-        # Convert the device address to uppercase if it's not already
+        ## Normalise to lower-case colon form, which is how the scanner looks keys up.
+        device_address = device_address.strip().lower()
         if device_address.count(":") == 5 or len(device_address) > 20:
-            self.device_address = device_address.lower()
+            self.device_address = device_address
         else:
             self.device_address = ":".join(
                 device_address[i : i + 2] for i in range(0, len(device_address), 2)
@@ -386,13 +386,13 @@ class VictronDevice:
         try:
             # Create a scanner instance
             scanner = VictronScanner(
-                self.device_address, self.device_key, self.recv_data
+                {self.device_address: self.device_key}, self.recv_data
             )
             self.scanner = scanner
             await scanner.start()
         except Exception as e:
             self.logger.error(f"Error starting scanner: {e}")
-            # raise
+            self.scanner = None
 
     async def stop(self):
         """
@@ -436,8 +436,69 @@ class VictronDevice:
             self.logger.error(f"Error scanning for devices: {e}")
             return []
 
+    @property
+    def tag_key(self) -> str:
+        """The address without colons, which aren't allowed in tag keys."""
+        return self.device_address.replace(":", "")
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self.last_data, name) if self.last_data else None
+
+
+class VictronHub:
+    """One BLE scanner shared by every configured Victron device.
+
+    BlueZ won't run a second discovery alongside the first
+    (``org.bluez.Error.InProgress``), so a scanner per device leaves all but
+    the first unread. The shared scanner holds every key and routes each
+    broadcast to its device.
+    """
+
+    def __init__(self, devices: list[VictronDevice]):
+        self.devices = {d.device_address: d for d in devices}
+        self.scanner = None
+        self.logger = logging.getLogger(__name__)
+        self._ignored_addresses: set[str] = set()
+
+    async def start(self):
+        """Start scanning; safe to call repeatedly, and retries after a failure."""
+        if self.scanner or not self.devices:
+            return
+        scanner = VictronScanner(
+            {address: d.device_key for address, d in self.devices.items()},
+            self.recv_data,
+        )
+        try:
+            await scanner.start()
+        except Exception as e:
+            self.logger.error(f"Error starting Victron scanner: {e}")
+            return
+        self.scanner = scanner
+        for device in self.devices.values():
+            device.scanner = scanner
+            if device.reset_data_task is None:
+                device.reset_data_task = asyncio.create_task(device.reset_data())
+
+    async def stop(self):
+        if self.scanner:
+            await self.scanner.stop()
+            self.scanner = None
+        for device in self.devices.values():
+            device.scanner = None
+            if device.reset_data_task:
+                device.reset_data_task.cancel()
+                device.reset_data_task = None
+
+    def recv_data(self, device, data: bytes, advertisement=None):
+        address = device.address.lower()
+        target = self.devices.get(address)
+        if target is None:
+            ## Other Victron gear in range. Say so once per address.
+            if address not in self._ignored_addresses:
+                self._ignored_addresses.add(address)
+                self.logger.info(f"Ignoring unconfigured Victron device {address}")
+            return
+        target.recv_data(device, data, advertisement)
 
 
 # Example usage and testing

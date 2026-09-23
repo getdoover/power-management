@@ -25,8 +25,6 @@ class PowerManagerTags(Tags):
     shunt_voltage = Tag("number", default=None, live=True)
     shunt_current = Tag("number", default=None, live=True)
     shunt_power = Tag("number", default=None, live=True)
-    shunt_consumed_ah = Tag("number", default=None, live=True)
-    shunt_time_remaining = Tag("number", default=None, live=True)
     shunt_alarm = Tag("string", default=None)
     shunt_alarm_hidden = Tag("boolean", default=True)
 

@@ -8,7 +8,7 @@ from pydoover.models import ConnectionConfig, ConnectionType as DooverConnection
 from pydoover.ui import handler
 from pydoover.utils import apply_async_kalman_filter
 
-from .victron import DeviceKind, VictronDevice
+from .victron import DeviceKind, VictronDevice, VictronHub
 from .app_config import NIGHT_DISABLED, PowerManagerConfig
 from .app_tags import PowerManagerTags
 from .app_ui import PowerManagerUI
@@ -406,9 +406,10 @@ class PowerManager(Application):
                 victron_config.device_address.value,
                 victron_config.device_key.value,
             )
-            device.kind = known_kinds.get(device.device_address)
+            device.kind = known_kinds.get(device.tag_key)
             self.victron_devices.append(device)
-            await device.start()
+        self.victron_hub = VictronHub(self.victron_devices)
+        await self.victron_hub.start()
         log.info(f"Found {len(self.victron_devices)} Victron devices.")
 
         # Push the configured wake-on voltage to the platform (None disables it).
@@ -603,6 +604,8 @@ class PowerManager(Application):
         device we have never heard from is the only unknown; it's treated as a
         charger, which was the behaviour before kinds existed.
         """
+        ## No-op once running; retries if BlueZ was busy at startup.
+        await self.victron_hub.start()
 
         def of_kind(*kinds):
             return [d for d in self.victron_devices if d.kind in kinds]
@@ -622,7 +625,7 @@ class PowerManager(Application):
         await self.tags.meter_hidden.set(not meters)
         await self.refresh_meter(next((d for d in meters if d.last_data), None))
 
-        kinds = {d.device_address: d.kind for d in self.victron_devices if d.kind}
+        kinds = {d.tag_key: d.kind for d in self.victron_devices if d.kind}
         if kinds and kinds != (self.tags.victron_device_kinds.value or {}):
             await self.tags.victron_device_kinds.set(kinds)
 
@@ -642,20 +645,11 @@ class PowerManager(Application):
 
     async def refresh_shunt(self, device):
         soc = device.soc if device else None
-        remaining_mins = device.remaining_mins if device else None
-        consumed_ah = device.consumed_ah if device else None
         power = device.dc_power if device else None
         await self.tags.shunt_soc.set(soc)
         await self.tags.shunt_voltage.set(device.voltage if device else None)
         await self.tags.shunt_current.set(device.current if device else None)
         await self.tags.shunt_power.set(round(power, 1) if power is not None else None)
-        ## victron_ble reports consumed Ah as a negative number.
-        await self.tags.shunt_consumed_ah.set(
-            abs(consumed_ah) if consumed_ah is not None else None
-        )
-        await self.tags.shunt_time_remaining.set(
-            round(remaining_mins / 60, 1) if remaining_mins is not None else None
-        )
 
         alarms = device.alarm_labels if device else []
         if alarms:

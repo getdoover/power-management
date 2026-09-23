@@ -8,7 +8,7 @@ from pydoover.models import ConnectionConfig, ConnectionType as DooverConnection
 from pydoover.ui import handler
 from pydoover.utils import apply_async_kalman_filter
 
-from .victron import VictronDevice
+from .victron import DeviceKind, VictronDevice
 from .app_config import NIGHT_DISABLED, PowerManagerConfig
 from .app_tags import PowerManagerTags
 from .app_ui import PowerManagerUI
@@ -400,19 +400,16 @@ class PowerManager(Application):
         elif self.config.night_profile.value not in (None, "", NIGHT_DISABLED):
             log.warning(f"Night profile ignored: {reason}.")
 
+        known_kinds = self.tags.victron_device_kinds.value or {}
         for victron_config in self.config.victron_configs.elements:
-            self.victron_devices.append(
-                VictronDevice(
-                    victron_config.device_address.value,
-                    victron_config.device_key.value,
-                )
+            device = VictronDevice(
+                victron_config.device_address.value,
+                victron_config.device_key.value,
             )
-            await self.victron_devices[-1].start()
+            device.kind = known_kinds.get(device.device_address)
+            self.victron_devices.append(device)
+            await device.start()
         log.info(f"Found {len(self.victron_devices)} Victron devices.")
-
-        # Show Victron UI elements if devices are configured
-        if self.victron_devices:
-            await self.tags.victron_hidden.set(False)
 
         # Push the configured wake-on voltage to the platform (None disables it).
         # Tolerate older firmware that doesn't implement this.
@@ -597,13 +594,83 @@ class PowerManager(Application):
         else:
             await self.tags.about_to_sleep_warning_hidden.set(True)
 
-        # Victron charger data
-        if self.victron_devices:
-            for device in self.victron_devices:
-                await self.tags.charge_state.set(device.state)
-                await self.tags.charge_current.set(device.output_current)
-                await self.tags.charge_voltage.set(device.output_voltage)
-                await self.tags.charge_power.set(device.output_power)
+        await self.refresh_victron()
+
+    async def refresh_victron(self):
+        """Update charger / shunt tags from the Victron devices.
+
+        A device's kind is learned from its broadcasts and persisted, so a
+        device we have never heard from is the only unknown; it's treated as a
+        charger, which was the behaviour before kinds existed.
+        """
+
+        def of_kind(*kinds):
+            return [d for d in self.victron_devices if d.kind in kinds]
+
+        chargers = of_kind(DeviceKind.CHARGER, None)
+        shunts = of_kind(DeviceKind.BATTERY_MONITOR)
+        meters = of_kind(DeviceKind.ENERGY_METER)
+
+        await self.tags.victron_hidden.set(not chargers)
+        await self.refresh_chargers([d for d in chargers if d.last_data])
+
+        await self.tags.shunt_hidden.set(not shunts)
+        ## Two battery monitors (e.g. house + starter) can't be combined, so
+        ## show the first listed that's reporting.
+        await self.refresh_shunt(next((d for d in shunts if d.last_data), None))
+
+        await self.tags.meter_hidden.set(not meters)
+        await self.refresh_meter(next((d for d in meters if d.last_data), None))
+
+        kinds = {d.device_address: d.kind for d in self.victron_devices if d.kind}
+        if kinds and kinds != (self.tags.victron_device_kinds.value or {}):
+            await self.tags.victron_device_kinds.set(kinds)
+
+    async def refresh_chargers(self, chargers):
+        """Combine every reporting charger: currents and powers add up."""
+
+        def total(values):
+            values = [v for v in values if v is not None]
+            return sum(values) if values else None
+
+        states = list(dict.fromkeys(d.state for d in chargers if d.state))
+        voltages = [d.output_voltage for d in chargers if d.output_voltage is not None]
+        await self.tags.charge_state.set(" / ".join(states) if states else None)
+        await self.tags.charge_current.set(total(d.output_current for d in chargers))
+        await self.tags.charge_voltage.set(max(voltages) if voltages else None)
+        await self.tags.charge_power.set(total(d.output_power for d in chargers))
+
+    async def refresh_shunt(self, device):
+        soc = device.soc if device else None
+        remaining_mins = device.remaining_mins if device else None
+        consumed_ah = device.consumed_ah if device else None
+        power = device.dc_power if device else None
+        await self.tags.shunt_soc.set(soc)
+        await self.tags.shunt_voltage.set(device.voltage if device else None)
+        await self.tags.shunt_current.set(device.current if device else None)
+        await self.tags.shunt_power.set(round(power, 1) if power is not None else None)
+        ## victron_ble reports consumed Ah as a negative number.
+        await self.tags.shunt_consumed_ah.set(
+            abs(consumed_ah) if consumed_ah is not None else None
+        )
+        await self.tags.shunt_time_remaining.set(
+            round(remaining_mins / 60, 1) if remaining_mins is not None else None
+        )
+
+        alarms = device.alarm_labels if device else []
+        if alarms:
+            await self.tags.shunt_alarm.set(f"Battery Alarm: {', '.join(alarms)}")
+        await self.tags.shunt_alarm_hidden.set(not alarms)
+
+    async def refresh_meter(self, device):
+        meter_type = device.meter_type if device else None
+        power = device.dc_power if device else None
+        await self.tags.meter_type.set(
+            meter_type.replace("_", " ").title() if meter_type else None
+        )
+        await self.tags.meter_voltage.set(device.voltage if device else None)
+        await self.tags.meter_current.set(device.current if device else None)
+        await self.tags.meter_power.set(round(power, 1) if power is not None else None)
 
     @handler("enable_immunity")
     async def on_enable_immunity(self, ctx, value):

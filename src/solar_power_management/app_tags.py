@@ -19,6 +19,28 @@ class PowerManagerTags(Tags):
     charge_voltage = Tag("number", default=None, live=True)
     charge_power = Tag("number", default=None, live=True)
 
+    # Victron battery monitor (SmartShunt / BMV)
+    shunt_hidden = Tag("boolean", default=True)
+    shunt_soc = Tag("number", default=None, live=True)
+    shunt_voltage = Tag("number", default=None, live=True)
+    shunt_current = Tag("number", default=None, live=True)
+    shunt_power = Tag("number", default=None, live=True)
+    shunt_consumed_ah = Tag("number", default=None, live=True)
+    shunt_time_remaining = Tag("number", default=None, live=True)
+    shunt_alarm = Tag("string", default=None)
+    shunt_alarm_hidden = Tag("boolean", default=True)
+
+    # Victron SmartShunt in DC energy meter mode (measuring a source or load)
+    meter_hidden = Tag("boolean", default=True)
+    meter_type = Tag("string", default=None)
+    meter_voltage = Tag("number", default=None, live=True)
+    meter_current = Tag("number", default=None, live=True)
+    meter_power = Tag("number", default=None, live=True)
+
+    # Device address -> DeviceKind, learned from broadcasts and kept across
+    # reboots so the right UI sections show before the first packet arrives.
+    victron_device_kinds = Tag("object", default=None)
+
     # Warning states
     low_battery_warning_sent = Tag("boolean", default=False)
     low_batt_warning_hidden = Tag("boolean", default=True)

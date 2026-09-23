@@ -52,6 +52,83 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
         hidden=PowerManagerTags.victron_hidden,
     )
 
+    # SmartShunt elements - hidden until a battery monitor reports in
+    shunt_soc = ui.NumericVariable(
+        "Battery State of Charge",
+        units="%",
+        value=PowerManagerTags.shunt_soc,
+        precision=0,
+        hidden=PowerManagerTags.shunt_hidden,
+        ranges=[
+            ui.Range("Low", 0, 20, ui.Colour.red),
+            ui.Range("Medium", 20, 50, ui.Colour.yellow),
+            ui.Range("Good", 50, 100, ui.Colour.green),
+        ],
+    )
+    shunt_voltage = ui.NumericVariable(
+        "Shunt Voltage",
+        units="V",
+        value=PowerManagerTags.shunt_voltage,
+        precision=2,
+        hidden=PowerManagerTags.shunt_hidden,
+    )
+    shunt_current = ui.NumericVariable(
+        "Battery Current",
+        units="A",
+        value=PowerManagerTags.shunt_current,
+        precision=1,
+        hidden=PowerManagerTags.shunt_hidden,
+    )
+    shunt_power = ui.NumericVariable(
+        "Battery Power",
+        units="W",
+        value=PowerManagerTags.shunt_power,
+        precision=1,
+        hidden=PowerManagerTags.shunt_hidden,
+    )
+    shunt_consumed_ah = ui.NumericVariable(
+        "Consumed",
+        units="Ah",
+        value=PowerManagerTags.shunt_consumed_ah,
+        precision=1,
+        hidden=PowerManagerTags.shunt_hidden,
+    )
+    shunt_time_remaining = ui.NumericVariable(
+        "Time Remaining",
+        units="h",
+        value=PowerManagerTags.shunt_time_remaining,
+        precision=1,
+        hidden=PowerManagerTags.shunt_hidden,
+    )
+
+    # SmartShunt (DC energy meter mode) elements
+    meter_type = ui.TextVariable(
+        "DC Meter",
+        value=PowerManagerTags.meter_type,
+        hidden=PowerManagerTags.meter_hidden,
+    )
+    meter_voltage = ui.NumericVariable(
+        "DC Meter Voltage",
+        units="V",
+        value=PowerManagerTags.meter_voltage,
+        precision=2,
+        hidden=PowerManagerTags.meter_hidden,
+    )
+    meter_current = ui.NumericVariable(
+        "DC Meter Current",
+        units="A",
+        value=PowerManagerTags.meter_current,
+        precision=1,
+        hidden=PowerManagerTags.meter_hidden,
+    )
+    meter_power = ui.NumericVariable(
+        "DC Meter Power",
+        units="W",
+        value=PowerManagerTags.meter_power,
+        precision=1,
+        hidden=PowerManagerTags.meter_hidden,
+    )
+
     system_power = ui.NumericVariable(
         "System Power",
         units="W",
@@ -88,6 +165,12 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
         hidden=PowerManagerTags.immune_warning_hidden,
     )
 
+    shunt_alarm_warning = ui.WarningIndicator(
+        name="shunt_alarm_warning",
+        display_name=PowerManagerTags.shunt_alarm,
+        hidden=PowerManagerTags.shunt_alarm_hidden,
+    )
+
     about_to_sleep_warning = ui.WarningIndicator(
         name="about_to_sleep_warning",
         display_name=PowerManagerTags.about_to_sleep_warning_text,
@@ -95,6 +178,10 @@ class PowerManagerUI(ui.UI, display_name="Power & Battery"):
     )
 
     async def setup(self):
+        hide_stay_on = self.config.hide_stay_on_button.value
+        self.enable_immunity.hidden = hide_stay_on
+        self.is_online.hidden = hide_stay_on
+
         # Set voltage ranges based on 12V/24V config
         if self.config.is_12v:
             self.system_voltage.ranges = [

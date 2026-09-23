@@ -30,6 +30,7 @@ Manage device power and shutdown procedures on power-limited devices, especially
 | **Sleep Time Thresholds** | Sleep times by voltage. Only used when **Profile** is `Custom`. | `Required` |
 | **Min Awake Time Thresholds** | Minimum awake times by voltage. Only used when **Profile** is `Custom`. | `Required` |
 | **Override Shutdown Permission in Minutes** | How long to wait before overriding an app that denies shutdown | `60` |
+| **Hide Stay On Button** | Hides the **Stay On For 30 Mins** button and the **Online Now** indicator | `false` |
 | **Wake-on Voltage** | Input voltage at which the device wakes itself. Blank defaults to 13.5 V (12 V profiles) or 27 V (24 V profiles). | `` |
 
 <br/>

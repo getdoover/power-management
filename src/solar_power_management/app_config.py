@@ -234,10 +234,18 @@ class PowerManagerConfig(config.Schema):
         "Leave blank to default to 13.5V for 12V profiles or 27V for 24V profiles.",
         advanced=True,
     )
+    hide_stay_on_button = config.Boolean(
+        "Hide Stay On Button",
+        default=False,
+        description="Hide the 'Stay On For 30 Mins' button, and the 'Online Now' "
+        "indicator with it, e.g. on devices that never sleep.",
+        advanced=True,
+    )
     victron_configs = config.Array(
         "Victron Configs",
         element=VictronConfig("Victron Bluetooth Config"),
-        description="The Victron devices to bluetooth to.",
+        description="The Victron devices to bluetooth to. Solar/DC chargers and "
+        "SmartShunt / BMV battery monitors are detected automatically.",
     )
     position = ApplicationPosition(default=120)
 

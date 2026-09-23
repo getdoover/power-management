@@ -18,13 +18,85 @@ try:
     # from victron_ble import VictronBLEDevice
     from bleak import BLEDevice
     from victron_ble.scanner import Scanner
-    from victron_ble.devices import detect_device_type
+    from victron_ble.devices import (
+        AcChargerData,
+        BatteryMonitor,
+        BatteryMonitorData,
+        DcDcConverterData,
+        DcEnergyMeterData,
+        OrionXSData,
+        SolarChargerData,
+        detect_device_type,
+    )
+    from victron_ble.devices.base import AlarmReason
     from victron_ble.exceptions import AdvertisementKeyMissingError, UnknownDeviceError
 
 except ImportError:
     raise ImportError(
         "victron-ble package is required. Install with: pip install victron-ble"
     )
+
+
+class DeviceKind:
+    """What a Victron device is, as far as this app cares."""
+
+    CHARGER = "charger"
+    ## SmartShunt / BMV in battery monitor mode
+    BATTERY_MONITOR = "battery_monitor"
+    ## SmartShunt in DC energy meter mode, measuring a source or load
+    ENERGY_METER = "energy_meter"
+    ## Anything else (Battery Sense, Lithium Smart, inverters, ...); not displayed
+    OTHER = "other"
+
+
+_CHARGER_DATA_TYPES = (SolarChargerData, AcChargerData, DcDcConverterData, OrionXSData)
+
+_ALARM_LABELS = {
+    AlarmReason.LOW_VOLTAGE: "Low Voltage",
+    AlarmReason.HIGH_VOLTAGE: "High Voltage",
+    AlarmReason.LOW_SOC: "Low SOC",
+    AlarmReason.LOW_STARTER_VOLTAGE: "Low Starter Voltage",
+    AlarmReason.HIGH_STARTER_VOLTAGE: "High Starter Voltage",
+    AlarmReason.LOW_TEMPERATURE: "Low Temperature",
+    AlarmReason.HIGH_TEMPERATURE: "High Temperature",
+    AlarmReason.MID_VOLTAGE: "Midpoint Voltage",
+    AlarmReason.OVERLOAD: "Overload",
+    AlarmReason.DC_RIPPLE: "DC Ripple",
+    AlarmReason.LOW_V_AC_OUT: "Low AC Output Voltage",
+    AlarmReason.HIGH_V_AC_OUT: "High AC Output Voltage",
+    AlarmReason.SHORT_CIRCUIT: "Short Circuit",
+    AlarmReason.BMS_LOCKOUT: "BMS Lockout",
+}
+
+
+def alarm_labels(alarm_bits: int | None) -> list[str]:
+    """Human-readable names for each alarm set in a Victron alarm bitmask."""
+    if not alarm_bits:
+        return []
+    return [
+        label for reason, label in _ALARM_LABELS.items() if alarm_bits & reason.value
+    ]
+
+
+class _BatteryMonitor(BatteryMonitor):
+    """BatteryMonitor that tolerates more than one alarm at once.
+
+    The alarm field is a bitmask, but victron_ble parses it with
+    ``AlarmReason(alarm)``, which raises on combined alarms (e.g. low voltage +
+    low SOC) and drops the whole packet, so readings go stale exactly when the
+    battery is in trouble. Parse with the alarm zeroed, then restore the raw
+    bitmask; DcEnergyMeter already reports it raw.
+    """
+
+    def parse_decrypted(self, decrypted: bytes) -> dict:
+        ## Alarm is the third little-endian 16-bit field.
+        alarm = int.from_bytes(decrypted[4:6], "little")
+        parsed = super().parse_decrypted(decrypted[:4] + b"\x00\x00" + decrypted[6:])
+        parsed["alarm"] = alarm
+        return parsed
+
+
+_PARSER_OVERRIDES = {BatteryMonitor: _BatteryMonitor}
 
 
 @dataclass
@@ -85,7 +157,8 @@ class VictronDeviceData:
             return current_2
         elif self.battery_charging_current is not None:
             return self.battery_charging_current
-        return None
+        ## DC-DC chargers; the getter's name is shadowed by this property.
+        return self._data_as_dict().get("output_current")
 
     @property
     def output_voltage(self):
@@ -100,13 +173,36 @@ class VictronDeviceData:
             return voltage_2
         elif self.battery_voltage is not None:
             return self.battery_voltage
-        return None
+        ## DC-DC chargers; the getter's name is shadowed by this property.
+        return self._data_as_dict().get("output_voltage")
 
     @property
     def output_power(self):
         if self.output_current is not None and self.output_voltage is not None:
             return self.output_current * self.output_voltage
         return None
+
+    @property
+    def kind(self) -> str:
+        if isinstance(self.data, BatteryMonitorData):
+            return DeviceKind.BATTERY_MONITOR
+        if isinstance(self.data, DcEnergyMeterData):
+            return DeviceKind.ENERGY_METER
+        if isinstance(self.data, _CHARGER_DATA_TYPES):
+            return DeviceKind.CHARGER
+        return DeviceKind.OTHER
+
+    @property
+    def dc_power(self):
+        """Shunt power in watts. For a battery monitor, positive is charging."""
+        if self.voltage is not None and self.current is not None:
+            return self.voltage * self.current
+        return None
+
+    @property
+    def alarm_labels(self) -> list[str]:
+        alarm = self.alarm
+        return alarm_labels(alarm) if isinstance(alarm, int) else []
 
     @property
     def charge_efficiency(self):
@@ -167,6 +263,7 @@ class VictronScanner(Scanner):
                     f"Could not identify device type for {address}"
                 )
 
+            device_klass = _PARSER_OVERRIDES.get(device_klass, device_klass)
             self._known_devices[address] = device_klass(advertisement_key)
         return self._known_devices[address]
 
@@ -202,6 +299,10 @@ class VictronDevice:
         self.last_data_time = None
         self.data_recv_event = asyncio.Event()
         self.reset_data_task = None
+        ## A DeviceKind, or None until known. Seeded from the value persisted
+        ## on a previous boot so the UI is right before the first packet.
+        self.kind: str | None = None
+        self._ignored_addresses: set[str] = set()
 
     async def reset_data(self):
         """
@@ -243,8 +344,15 @@ class VictronDevice:
             if result is None:
                 return
         except AdvertisementKeyMissingError:
-            # Unknown device, ignore
-            self.logger.info(f"Unknown device: {device}")
+            ## Each scanner only holds its own key, so this fires for every
+            ## packet from our other configured devices and any Victron gear
+            ## nearby. Say so once per address, then stay quiet.
+            if device.address not in self._ignored_addresses:
+                self._ignored_addresses.add(device.address)
+                self.logger.info(
+                    f"Ignoring Victron broadcasts from {device.address} "
+                    f"(scanning for {self.device_address})"
+                )
             return
         except Exception as e:
             self.logger.error(f"Error parsing data: {e}")
@@ -252,6 +360,7 @@ class VictronDevice:
             return
         self.last_data = result
         self.last_data_time = time.time()
+        self.kind = result.kind
         self.data_recv_event.set()
 
     def parse_data(self, device: BLEDevice, data: bytes):
